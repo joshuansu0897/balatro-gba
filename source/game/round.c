@@ -56,8 +56,9 @@
 #define NUM_SCORE_LERP_STEPS   16
 #define TM_SCORE_LERP_INTERVAL 2
 
-#define GAME_PLAYING_HAND_SEL_Y   1
-#define GAME_PLAYING_JOKERS_SEL_Y 0
+#define GAME_PLAYING_HAND_SEL_Y    1
+#define GAME_PLAYING_JOKERS_SEL_Y  0
+#define GAME_PLAYING_BUTTONS_SEL_Y 2
 
 // Pixel sizes
 #define CARD_FOCUSED_UNSEL_Y   10
@@ -521,6 +522,38 @@ int get_scored_card_index(void)
 void set_retrigger(bool new_retrigger)
 {
     s_retrigger = new_retrigger;
+}
+
+static inline void print_blind_score_requirement(void)
+{
+    Rect blind_req_text_rect = BLIND_REQ_TEXT_RECT;
+    u32 blind_requirement = blind_get_requirement(g_game_vars.current_blind, g_game_vars.ante);
+
+    char blind_req_str_buff[UINT_MAX_DIGITS + 1];
+
+    truncate_uint_to_suffixed_str(
+        blind_requirement,
+        rect_width(&BLIND_REQ_TEXT_RECT) / TTE_CHAR_SIZE,
+        blind_req_str_buff
+    );
+
+    // Update text rect for right alignment AFTER shortening the number
+    update_text_rect_to_right_align_str(&blind_req_text_rect, blind_req_str_buff, OVERFLOW_RIGHT);
+
+    tte_printf(
+        "#{P:%d,%d; cx:0x%X000}%s",
+        blind_req_text_rect.left,
+        blind_req_text_rect.top,
+        TTE_RED_PB,
+        blind_req_str_buff
+    );
+    tte_printf(
+        "#{P:%d,%d; cx:0x%X000}$%d",
+        BLIND_REWARD_RECT.left,
+        BLIND_REWARD_RECT.top,
+        TTE_YELLOW_PB,
+        blind_get_reward(g_game_vars.current_blind)
+    ); // Blind reward
 }
 
 /**
@@ -1002,11 +1035,55 @@ static void round_leave_to_main_menu(void)
     game_change_state(GAME_STATE_MAIN_MENU);
 }
 
+/**
+ * @brief Hide the sprites of the Round so a full-screen page can be drawn over it.
+ */
+static void round_hide_screen(void)
+{
+    sprite_hide(g_game_vars.playing_blind_token);
+    deck_pile_hide();
+    sprite_object_hide_all_in_list(get_jokers_list());
+    sprite_object_hide_all_in_list(get_owned_skip_tags());
+    CardObject** hand = get_hand_array();
+    for (int i = 0; i <= get_hand_top(); i++)
+    {
+        sprite_object_hide((SpriteObject*)hand[i]);
+    }
+}
+
+/**
+ * @brief Draw the background and the sprites of the Round again after round_hide_screen().
+ *
+ * WHY: the text is not printed again here, the pause overlay restores it as it was
+ */
+static void round_show_screen(void)
+{
+    round_change_background_selecting();
+    if (game_round_selection_grid.selection.y == GAME_PLAYING_BUTTONS_SEL_Y)
+        round_button_set_highlight(game_round_selection_grid.selection.x, true);
+
+    sprite_unhide(g_game_vars.playing_blind_token);
+    deck_pile_show(g_game_vars.deck);
+    sprite_object_unhide_all_in_list(get_jokers_list());
+    sprite_object_unhide_all_in_list(get_owned_skip_tags());
+    CardObject** hand = get_hand_array();
+    for (int i = 0; i <= get_hand_top(); i++)
+    {
+        sprite_object_unhide((SpriteObject*)hand[i]);
+    }
+}
+
+static const PauseMenuHost ROUND_PAUSE_HOST = {
+    .quit_to_main_menu = round_quit_to_main_menu,
+    .hide_screen = round_hide_screen,
+    .show_screen = round_show_screen,
+};
+
 static inline void round_process_hand_select_input(void)
 {
     if (key_hit(KEY_PAUSE_GAME))
     {
-        pause_menu_open(round_quit_to_main_menu);
+        pause_menu_open(&ROUND_PAUSE_HOST);
         return;
     }
 
@@ -2491,34 +2568,7 @@ void round_on_init(void)
         sprite_hide(g_game_vars.round_end_blind_token); // Hide the blind token sprite for now
     }
 
-    Rect blind_req_text_rect = BLIND_REQ_TEXT_RECT;
-    u32 blind_requirement = blind_get_requirement(g_game_vars.current_blind, g_game_vars.ante);
-
-    char blind_req_str_buff[UINT_MAX_DIGITS + 1];
-
-    truncate_uint_to_suffixed_str(
-        blind_requirement,
-        rect_width(&BLIND_REQ_TEXT_RECT) / TTE_CHAR_SIZE,
-        blind_req_str_buff
-    );
-
-    // Update text rect for right alignment AFTER shortening the number
-    update_text_rect_to_right_align_str(&blind_req_text_rect, blind_req_str_buff, OVERFLOW_RIGHT);
-
-    tte_printf(
-        "#{P:%d,%d; cx:0x%X000}%s",
-        blind_req_text_rect.left,
-        blind_req_text_rect.top,
-        TTE_RED_PB,
-        blind_req_str_buff
-    );
-    tte_printf(
-        "#{P:%d,%d; cx:0x%X000}$%d",
-        BLIND_REWARD_RECT.left,
-        BLIND_REWARD_RECT.top,
-        TTE_YELLOW_PB,
-        blind_get_reward(g_game_vars.current_blind)
-    ); // Blind reward
+    print_blind_score_requirement();
 
     deck_shuffle(); // Shuffle the deck at the start of the round
 

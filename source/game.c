@@ -218,6 +218,8 @@ void game_init()
     game_apply_deck_starting_rules();
     for (int i = 0; i < HAND_TYPE_MAX; i++)
         g_game_vars.nb_played_hands[i] = 0;
+    for (int i = 0; i < HAND_TYPE_MAX; i++)
+        g_game_vars.hand_levels[i] = 0;
     g_game_vars.best_hand_score = 0;
     g_game_vars.nb_skipped_rounds = 0;
     g_game_vars.nb_unused_discards = 0;
