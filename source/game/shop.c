@@ -12,6 +12,7 @@
 #include "game.h"
 #include "game/deck_pile.h"
 #include "game/joker_row.h"
+#include "game/shop_packs.h"
 #include "game_variables.h"
 #include "joker.h"
 #include "layout.h"
@@ -54,7 +55,6 @@
 #define NEXT_ROUND_BTN_PAL_IDX                 16
 #define SHOP_LIGHTS_3_PAL_IDX                  17
 #define SHOP_LIGHTS_4_PAL_IDX                  22
-#define SHOP_BOTTOM_PANEL_BORDER_PAL_IDX       26
 #define SHOP_DESC_RARITY_MAIN_COLOR_PAL_IDX    27
 #define SHOP_DESC_RARITY_SHADOW_COLOR_PAL_IDX  28
 
@@ -115,6 +115,7 @@ enum GameShopStates
     GAME_SHOP_SHOW_ITEM_DESC,
     GAME_SHOP_HIDE_ITEM_DESC,
     GAME_SHOP_EXIT,
+    GAME_SHOP_OPEN_PACK,
     GAME_SHOP_MAX
 };
 
@@ -127,6 +128,7 @@ static void shop_hide_item_desc_on_init(void);
 static void shop_hide_item_desc_on_update(void);
 static void shop_hide_item_desc_on_exit(void);
 static void shop_outro(void);
+static void shop_open_pack_on_update(void);
 
 // clang-format off
 static StateInfo shop_state_actions[GAME_SHOP_MAX] = {
@@ -140,6 +142,7 @@ static StateInfo shop_state_actions[GAME_SHOP_MAX] = {
                                   .on_update = shop_hide_item_desc_on_update,
                                   .on_exit   = shop_hide_item_desc_on_exit},
     [GAME_SHOP_EXIT]           = STATE_INFO_UPDATE_FN_ONLY(shop_outro),
+    [GAME_SHOP_OPEN_PACK]      = STATE_INFO_UPDATE_FN_ONLY(shop_open_pack_on_update),
 };
 // clang-format on
 
@@ -149,6 +152,7 @@ static StateMachine shop_sm = STATE_MACHINE_DEFINE(shop_state_actions, GAME_SHOP
 
 #define SHOP_GRID_OWNED_ROW    0
 #define SHOP_GRID_FOR_SALE_ROW 1
+#define SHOP_GRID_PACKS_ROW    3
 
 static int shop_top_row_get_size(void);
 static bool shop_top_row_on_selection_changed(
@@ -166,11 +170,20 @@ static bool shop_reroll_row_on_selection_changed(
     const Selection* new_selection
 );
 static void shop_reroll_row_on_key_transit(SelectionGrid* selection_grid, Selection* selection);
+static int shop_packs_row_get_size(void);
+static bool shop_packs_row_on_selection_changed(
+    SelectionGrid* selection_grid,
+    int row_idx,
+    const Selection* prev_selection,
+    const Selection* new_selection
+);
+static void shop_packs_row_on_key_transit(SelectionGrid* selection_grid, Selection* selection);
 
 static SelectionGridRow shop_selection_rows[] = {
     {0, jokers_sel_row_get_size,  jokers_sel_row_on_selection_changed,  jokers_sel_row_on_key_transit,  {.wrap = false, .has_h_exit_idx = false, .h_exit_idx = 0}},
     {1, shop_top_row_get_size,    shop_top_row_on_selection_changed,    shop_top_row_on_key_transit,    {.wrap = false, .has_h_exit_idx = false, .h_exit_idx = 0}},
     {2, shop_reroll_row_get_size, shop_reroll_row_on_selection_changed, shop_reroll_row_on_key_transit, {.wrap = false, .has_h_exit_idx = true, .h_exit_idx = 1} },
+    {3, shop_packs_row_get_size,  shop_packs_row_on_selection_changed,  shop_packs_row_on_key_transit,  {.wrap = false, .has_h_exit_idx = false, .h_exit_idx = 0}},
 };
 
 static const Selection SHOP_INIT_SEL = {-1, 1};
@@ -250,7 +263,7 @@ void shop_change_background(void)
 
     // Set the outline colors for the shop background. This is used for the alternate shop
     // palettes when opening packs
-    pal_bg_mem[SHOP_BOTTOM_PANEL_BORDER_PAL_IDX] = 0x213D;
+    pal_bg_mem[SHOP_PANEL_BORDER_PAL_IDX] = SHOP_PANEL_BORDER_COLOR;
     pal_bg_mem[SHOP_PANEL_SHADOW_PAL_IDX] = 0x10B4;
 
     // Reset the shop lights to correct colors
@@ -369,6 +382,7 @@ static void shop_intro()
     if (s_timer == TM_CREATE_SHOP_ITEMS_WAIT)
     {
         shop_create_top_row_items();
+        shop_packs_create(&s_shop_items_container);
     }
 
     if (s_timer >= TM_SHIFT_SHOP_ICON_WAIT) // Shift the shop icon
@@ -396,6 +410,7 @@ static void shop_intro()
 
         // print initial reroll cost only when the panel is in place
         shop_print_reroll_cost();
+        shop_packs_print_text();
     }
 }
 
@@ -410,6 +425,20 @@ static int shop_top_row_get_size(void)
 }
 
 /**
+ * @brief Take an item out of the Shop and give it to the player.
+ */
+static void shop_take_item(int shop_item_idx)
+{
+    Item* item = (Item*)list_get_at_idx(&s_shop_items_container.contents_list, shop_item_idx);
+
+    sprite_object_erase_text_under((SpriteObject*)item);
+    sprite_object_set_focus((SpriteObject*)item, false);
+
+    container_remove_at_idx(&s_shop_items_container, shop_item_idx);
+    item_acquire(item);
+}
+
+/**
  * @brief Called when pressing A on a Shop Joker to buy it.
  */
 static inline void shop_buy_item(int shop_item_idx)
@@ -419,11 +448,17 @@ static inline void shop_buy_item(int shop_item_idx)
     g_game_vars.money -= item_get_buy_price(item);
     play_sfx(SFX_COIN1_MONEY_CHNG, MM_BASE_PITCH_RATE, SFX_DEFAULT_VOLUME);
     display_money();
-    sprite_object_erase_text_under((SpriteObject*)item);
-    sprite_object_set_focus((SpriteObject*)item, false);
 
-    container_remove_at_idx(&s_shop_items_container, shop_item_idx);
-    item_acquire(item);
+    shop_take_item(shop_item_idx);
+}
+
+/**
+ * @brief Print the price under an item for sale. The content of an open pack is free.
+ */
+static void shop_print_item_price_under(Item* item)
+{
+    int price = shop_packs_is_open() ? 0 : item_get_buy_price(item);
+    sprite_object_print_price_under((SpriteObject*)item, price);
 }
 
 static void shop_items_container_update(SpriteContainer* shop_container)
@@ -432,7 +467,36 @@ static void shop_items_container_update(SpriteContainer* shop_container)
     ListItr itr = list_itr_create(&shop_container->contents_list);
     SpriteObject* item = NULL;
     while ((item = list_itr_next(&itr)))
-        item_print_buy_price_under((Item*)item);
+        shop_print_item_price_under((Item*)item);
+
+    // WHY: the text of the packs is inside the area erased above
+    shop_packs_print_text();
+}
+
+static void shop_select_next_round_button(void)
+{
+    shop_selection_grid.selection = (Selection){NEXT_ROUND_BTN_SEL_X, SHOP_GRID_FOR_SALE_ROW};
+    button_set_highlight(&next_round_button, true);
+}
+
+/**
+ * @brief Take an item of the open pack for free, or pass with the "Next Round" button. Both
+ *        close the pack.
+ */
+static void shop_take_from_open_pack(int selection_x)
+{
+    if (selection_x != NEXT_ROUND_BTN_SEL_X)
+    {
+        int item_idx = selection_x - 1; // - 1 to account for next round button
+        Item* item = (Item*)list_get_at_idx(&s_shop_items_container.contents_list, item_idx);
+        if (!item_can_acquire(item))
+            return;
+
+        shop_take_item(item_idx);
+    }
+
+    shop_packs_close();
+    shop_select_next_round_button();
 }
 
 /**
@@ -442,6 +506,12 @@ static void shop_top_row_on_key_transit(SelectionGrid* selection_grid, Selection
 {
     if (!key_hit(KEY_CONFIRM))
         return;
+
+    if (shop_packs_is_open())
+    {
+        shop_take_from_open_pack(selection->x);
+        return;
+    }
 
     if (selection->x == NEXT_ROUND_BTN_SEL_X)
     {
@@ -535,7 +605,10 @@ static bool shop_reroll_row_on_selection_changed(
     {
         button_set_highlight(&reroll_button, false);
 
-        if (new_selection->x != NEXT_ROUND_BTN_SEL_X)
+        // WHY: the row of the packs is below, only the row above holds the Shop items
+        bool is_on_shop_item = (new_selection->y == SHOP_GRID_FOR_SALE_ROW) &&
+                               (new_selection->x != NEXT_ROUND_BTN_SEL_X);
+        if (is_on_shop_item)
         {
             int idx = new_selection->x - 1;
             SpriteObject* sprite_object =
@@ -608,6 +681,70 @@ static void shop_reroll_row_on_key_transit(SelectionGrid* selection_grid, Select
     button_press(&reroll_button);
 }
 
+static int shop_packs_row_get_size(void)
+{
+    return shop_packs_get_nb_for_sale();
+}
+
+/**
+ * @brief Handle d-pad inputs for the row of the packs.
+ */
+static bool shop_packs_row_on_selection_changed(
+    SelectionGrid* selection_grid,
+    int row_idx,
+    const Selection* prev_selection,
+    const Selection* new_selection
+)
+{
+    if (prev_selection->y == row_idx)
+        shop_packs_set_focus(prev_selection->x, false);
+
+    if (new_selection->y == row_idx)
+        shop_packs_set_focus(new_selection->x, true);
+
+    return true;
+}
+
+/**
+ * @brief Handle button inputs for the row of the packs: buy the selected pack, which opens.
+ */
+static void shop_packs_row_on_key_transit(SelectionGrid* selection_grid, Selection* selection)
+{
+    if (!key_hit(KEY_CONFIRM) || !shop_packs_buy(selection->x))
+        return;
+
+    s_timer = TM_ZERO;
+    state_machine_change_state(&shop_sm, GAME_SHOP_OPEN_PACK);
+}
+
+/**
+ * @brief Pack opening substate update: the pack shakes, pops, and its content is offered.
+ */
+static void shop_open_pack_on_update(void)
+{
+    enum ShopPackOpening opening = shop_packs_update_opening(s_timer);
+    if (opening == SHOP_PACK_OPENING)
+        return;
+
+    // Move the cursor to the first item offered, or to "Next Round" if the pack was empty
+    if (opening == SHOP_PACK_OPENED)
+    {
+        shop_selection_grid.selection =
+            (Selection){NEXT_ROUND_BTN_SEL_X + 1, SHOP_GRID_FOR_SALE_ROW};
+        sprite_object_set_focus(
+            (SpriteObject*)list_get_at_idx(&s_shop_items_container.contents_list, 0),
+            true
+        );
+    }
+    else
+    {
+        shop_select_next_round_button();
+    }
+
+    s_timer = TM_ZERO;
+    state_machine_change_state(&shop_sm, GAME_SHOP_ACTIVE);
+}
+
 static void next_round_on_pressed(void)
 {
     // Go to next blind selection game state
@@ -625,7 +762,7 @@ static void reroll_on_pressed(void)
 
 static bool reroll_can_be_pressed(void)
 {
-    return g_game_vars.money >= s_reroll_cost;
+    return !shop_packs_is_open() && g_game_vars.money >= s_reroll_cost;
 }
 
 /**
@@ -655,6 +792,12 @@ static void shop_process_user_input(void)
                                            shop_selection_grid.selection.x - 1
                                        )
                                      : NULL;
+            break;
+        }
+
+        case SHOP_GRID_PACKS_ROW:
+        {
+            new_description_item = shop_packs_get_for_sale(shop_selection_grid.selection.x);
             break;
         }
 
@@ -708,6 +851,7 @@ static void shop_show_item_desc_on_init(void)
             tmp_item->ty = int2fx(SHOP_JOKER_SPRITES_INIT_Y + TILE_SIZE);
     }
 
+    shop_packs_set_shown(false, s_description_item);
     set_owned_skip_tags_moved_offscreen(true);
 
     // Set description_card new target position
@@ -821,6 +965,7 @@ static void shop_hide_item_desc_on_init(void)
             tmp_item->ty = int2fx(ITEM_SHOP_Y);
     }
 
+    shop_packs_set_shown(true, s_description_item);
     set_owned_skip_tags_moved_offscreen(false);
 
     s_description_item->tx = s_description_item_original_x_pos;
@@ -865,7 +1010,7 @@ static void shop_hide_item_desc_on_exit(void)
     ListItr itr = list_itr_create(&s_shop_items_container.contents_list);
     while ((item = list_itr_next(&itr)))
     {
-        item_print_buy_price_under(item);
+        shop_print_item_price_under(item);
     }
 
     // Revert what we just did so the Item still appears selected
@@ -873,6 +1018,7 @@ static void shop_hide_item_desc_on_exit(void)
         s_description_item->ty -= int2fx(TILE_SIZE);
 
     shop_print_reroll_cost();
+    shop_packs_print_text();
 
     // Print Deck size that was erased
     display_deck_size_max();
@@ -913,6 +1059,7 @@ static void shop_outro(void)
                 shop_item->ty = int2fx(160);
             }
         }
+        shop_packs_set_shown(false, NULL);
 
         reset_top_left_panel_bottom_row();
     }
@@ -983,6 +1130,7 @@ void shop_on_exit(void)
     }
 
     list_clear(shop_items_list);
+    shop_packs_dispose();
 
     state_machine_remove(&shop_sm);
 }
