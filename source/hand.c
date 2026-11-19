@@ -7,6 +7,7 @@
 #include "hand.h"
 
 #include "audio_utils.h"
+#include "boss_blind_effects.h"
 #include "card.h"
 #include "game.h"
 #include "game/common_ui.h"
@@ -60,6 +61,9 @@ static const HandBonus HAND_LEVEL_BONUS[] = {
     [FLUSH_HOUSE]     = {.chips = 40, .mult = 4},
     [FLUSH_FIVE]      = {.chips = 50, .mult = 3} 
 };
+
+// Shown instead of the name of a hand the Boss Blind of the Round does not let score
+static const char HAND_BLOCKED_NAME[] = "Blocked";
 
 // Rects for TTE (in pixels)        left   top    right  bottom
 static const Rect HAND_TYPE_RECT = {8,     64,    64,    72};
@@ -227,7 +231,15 @@ void compute_hand_value_info(void)
     g_game_vars.chips = hand_values.chips;
     g_game_vars.mult = hand_values.mult;
 
-    print_hand_type(hand_values.display_name);
+    // WHY: a hand the Boss Blind does not allow is played for nothing, the player has to see it
+    // before playing
+    bool is_blocked = s_hand.hand_type != NONE && !boss_blind_validate_play(
+                                                      g_game_vars.current_blind,
+                                                      s_hand.hand_selections,
+                                                      s_hand.hand_type
+                                                  );
+
+    print_hand_type(is_blocked ? HAND_BLOCKED_NAME : hand_values.display_name);
     display_chips();
     display_mult();
 }

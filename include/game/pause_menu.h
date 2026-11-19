@@ -29,6 +29,12 @@ typedef struct PauseMenuHost
      * Its text is restored by the pause menu.
      */
     void (*show_screen)(void);
+
+    /**
+     * @brief Get a short reminder printed under the options. Can be NULL, and can return NULL
+     * when there is nothing to remind.
+     */
+    const char* (*get_note)(void);
 } PauseMenuHost;
 
 /**

@@ -40,6 +40,7 @@ enum PauseStage
 // Positions in pixels. The title and the options are centered vertically on the screen as a block.
 #define PAUSE_TITLE_Y   48
 #define PAUSE_OPTIONS_Y 72
+#define PAUSE_NOTE_Y    128
 
 // WHY: text can only be placed every 8 pixels, the width of a character. A name with an odd
 // number of characters cannot be centered and ends up half a character to the left, so every
@@ -64,6 +65,19 @@ static void pause_menu_print_centered(const char* text, int y, u8 text_color)
     tte_printf("#{P:%d,%d; cx:0x%X000}%s", x, y, text_color, text);
 }
 
+/**
+ * @brief Print the reminder of the paused screen under the options, if it has one.
+ */
+static void pause_menu_print_note(void)
+{
+    if (s_host->get_note == NULL)
+        return;
+
+    const char* note = s_host->get_note();
+    if (note != NULL)
+        pause_menu_print_centered(note, PAUSE_NOTE_Y, TTE_RED_PB);
+}
+
 static void pause_menu_print(void)
 {
     pause_menu_print_centered("PAUSED", PAUSE_TITLE_Y, TTE_WHITE_PB);
@@ -79,6 +93,8 @@ static void pause_menu_print(void)
             is_selected ? TTE_YELLOW_PB : TTE_WHITE_PB
         );
     }
+
+    pause_menu_print_note();
 }
 
 /**

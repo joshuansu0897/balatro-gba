@@ -22,3 +22,4 @@ run_test pool
 run_test util
 run_test run_history
 run_test sfx_pitch
+run_test boss_blind_effects
