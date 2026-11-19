@@ -14,6 +14,7 @@ _codeql_detected_source_root
 /tests/sfx_pitch/build
 /tests/boss_blind_effects/build
 /tests/hand_levels/build
+/tests/pack_rules/build
 doc
 tests/util/.vscode
 tests/util/build

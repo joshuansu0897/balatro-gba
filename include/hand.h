@@ -130,6 +130,24 @@ void hand_level_up(enum HandType hand_type);
 HandBonus hand_get_level_up_bonus(enum HandType hand_type);
 
 /**
+ * @brief Show in the left panel that a Hand leveled up: its name and its level, in turns.
+ *
+ * It stays on screen, kept up to date by hand_update_level_up(), until
+ * hand_hide_level_up() is called.
+ */
+void hand_show_level_up(enum HandType hand_type);
+
+/**
+ * @brief Play one frame of the level up shown by hand_show_level_up(), if there is one.
+ */
+void hand_update_level_up(void);
+
+/**
+ * @brief Stop showing a level up.
+ */
+void hand_hide_level_up(void);
+
+/**
  * @brief Determine the HandType and ContainedHandTypes of the currently selected Cards,
  *         then print the Hand's name, chips, and mult on screen.
  */

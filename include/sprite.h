@@ -47,6 +47,7 @@ enum SpriteType
     JOKER_SPRITE,
     DECK_SPRITE,
     PLANET_SPRITE,
+    PACK_SPRITE,
     MAX_SPRITE_TYPE
 };
 

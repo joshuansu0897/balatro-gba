@@ -60,8 +60,9 @@ static const PlanetInfo PLANET_INFO[HAND_TYPE_MAX + 1] = {
 };
 // clang-format on
 
-// WHY: a Planet only exists while it is for sale, so there are never more than Shop items
-static PlanetObject s_planet_objects[MAX_SHOP_ITEMS];
+// WHY: a Planet only exists while it is for sale, in the Shop or in an open Planet Pack.
+// They are kept out of the fast memory, which the stack needs.
+static EWRAM_BSS PlanetObject s_planet_objects[MAX_PLANETS_FOR_SALE];
 
 static bool is_planet(const Item* item)
 {
@@ -70,7 +71,7 @@ static bool is_planet(const Item* item)
 
 static int planet_find_free_slot(void)
 {
-    for (int slot = 0; slot < MAX_SHOP_ITEMS; slot++)
+    for (int slot = 0; slot < MAX_PLANETS_FOR_SALE; slot++)
     {
         if (!s_planet_objects[slot].in_use)
             return slot;
@@ -184,6 +185,7 @@ void planet_object_acquire(Item* planet_object)
 
     PlanetObject* planet = (PlanetObject*)planet_object;
     hand_level_up(planet->hand_type);
+    hand_show_level_up(planet->hand_type);
     play_sfx(SFX_MULT, MM_BASE_PITCH_RATE, SFX_DEFAULT_VOLUME);
 
     // WHY: a Planet is used as soon as it is bought, it never goes to the inventory

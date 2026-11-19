@@ -4,6 +4,7 @@
 #include "game.h"
 #include "joker.h"
 #include "mgba_logger.h"
+#include "pack.h"
 #include "planet.h"
 #include "util.h"
 
@@ -52,6 +53,31 @@ ItemFuncs item_func_table[] = {
         .can_acquire = planet_object_can_acquire,
         .dispose = planet_object_dispose,
         .print_description = planet_object_print_description
+    },
+
+    // Packs are used up when bought: the Shop opens them and offers their content
+    [ITEM_TYPE_JOKER_PACK] = {
+        .roll_new = joker_pack_object_roll_new,
+        .get_buy_price = pack_object_get_buy_price,
+        .get_sell_price = NULL,
+        .get_name = pack_object_get_name,
+        .get_subtype_info = pack_object_get_subtype_info,
+        .acquire = pack_object_acquire,
+        .can_acquire = pack_object_can_acquire,
+        .dispose = pack_object_dispose,
+        .print_description = pack_object_print_description
+    },
+
+    [ITEM_TYPE_PLANET_PACK] = {
+        .roll_new = planet_pack_object_roll_new,
+        .get_buy_price = pack_object_get_buy_price,
+        .get_sell_price = NULL,
+        .get_name = pack_object_get_name,
+        .get_subtype_info = pack_object_get_subtype_info,
+        .acquire = pack_object_acquire,
+        .can_acquire = pack_object_can_acquire,
+        .dispose = pack_object_dispose,
+        .print_description = pack_object_print_description
     }
 };
 // clang-format on

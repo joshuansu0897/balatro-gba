@@ -75,6 +75,17 @@ void test_values_that_are_not_hands_have_no_planet(void)
     assert(!hand_levels_has_planet(FLUSH_FIVE + 1, 9));
 }
 
+void test_level_up_shows_the_name_first_then_the_level_in_turns(void)
+{
+    assert(hand_levels_is_name_shown(0));
+    assert(hand_levels_is_name_shown(HAND_LEVELS_SHOWN_PART_FRAMES - 1));
+
+    assert(!hand_levels_is_name_shown(HAND_LEVELS_SHOWN_PART_FRAMES));
+    assert(!hand_levels_is_name_shown(2 * HAND_LEVELS_SHOWN_PART_FRAMES - 1));
+
+    assert(hand_levels_is_name_shown(2 * HAND_LEVELS_SHOWN_PART_FRAMES));
+}
+
 int main()
 {
     printf("Testing hand levels.\n");
@@ -85,6 +96,7 @@ int main()
     test_royal_flush_has_no_planet_of_its_own();
     test_secret_hands_have_a_planet_once_played();
     test_values_that_are_not_hands_have_no_planet();
+    test_level_up_shows_the_name_first_then_the_level_in_turns();
 
     printf("-------------------------------------------------------------------------------\n");
     printf("Hand Levels Tests Passed :)\n");
