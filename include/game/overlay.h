@@ -23,6 +23,18 @@ void overlay_open(void);
 void overlay_close(void);
 
 /**
+ * @brief Light the screen back up, or dim it again, while the overlay stays open.
+ *
+ * WHY: lets a full-screen page be shown at normal brightness from a menu of the overlay, with
+ * overlay_close() still restoring the text of the screen underneath afterwards.
+ *
+ * Does nothing if the overlay is not open.
+ *
+ * @param dimmed true to dim the game layers, false to show them at normal brightness
+ */
+void overlay_set_dimmed(bool dimmed);
+
+/**
  * @brief Tell whether every key is released, to call before closing a menu shown on the overlay.
  *
  * WHY: a key still held would reach the game as a held or released input once it resumes

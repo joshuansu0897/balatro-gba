@@ -6,6 +6,7 @@
 #include "blind.h"
 
 #include "blind_gfx.h"
+#include "boss_blind_effects.h"
 #include "game.h"
 #include "game/common_ui.h"
 #include "graphic_utils.h"
@@ -152,6 +153,30 @@ void init_unbeaten_blinds_lists(void)
     init_unbeaten_blinds_list(true);
 }
 
+/**
+ * @brief Roll a random Blind among the unbeaten ones that have an effect.
+ *
+ * @return the Blind rolled, or NULL if no unbeaten Blind has an effect
+ */
+static Blind* roll_unbeaten_blind_with_effect(List* p_unbeaten_blinds)
+{
+    Blind* blinds_with_effect[BLIND_TYPE_MAX];
+    int nb_blinds_with_effect = 0;
+
+    Blind* blind = NULL;
+    ListItr itr = list_itr_create(p_unbeaten_blinds);
+    while ((blind = list_itr_next(&itr)))
+    {
+        if (boss_blind_has_effect(blind->type) && nb_blinds_with_effect < BLIND_TYPE_MAX)
+            blinds_with_effect[nb_blinds_with_effect++] = blind;
+    }
+
+    if (nb_blinds_with_effect == 0)
+        return NULL;
+
+    return blinds_with_effect[rng_get_u32(RNG_SEQ_BLIND) % nb_blinds_with_effect];
+}
+
 enum BlindType roll_blind_type(bool showdown)
 {
     List* p_unbeaten_blinds = showdown ? &s_unbeaten_showdown_blinds : &s_unbeaten_boss_blinds;
@@ -162,6 +187,11 @@ enum BlindType roll_blind_type(bool showdown)
     {
         init_unbeaten_blinds_list(showdown);
     }
+
+    // WHY: most Boss Blinds have no effect yet, so the ones that have one are met first
+    Blind* blind_with_effect = roll_unbeaten_blind_with_effect(p_unbeaten_blinds);
+    if (blind_with_effect != NULL)
+        return blind_with_effect->type;
 
     // roll a random blind among the unbeaten ones
     int random_blind_idx = rng_get_u32(RNG_SEQ_BLIND) % list_get_len(p_unbeaten_blinds);

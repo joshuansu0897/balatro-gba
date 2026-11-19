@@ -20,6 +20,7 @@
 #include "random.h"
 #include "save.h"
 #include "skip_tag.h"
+#include "soundbank.h"
 #include "state_machine.h"
 #include "timer.h"
 #include "util.h"
@@ -264,6 +265,8 @@ void shop_change_background(void)
 
 void shop_on_init(void)
 {
+    save_game(GAME_STATE_SHOP);
+
     shop_change_background();
 
     s_timer = TM_ZERO;
@@ -405,6 +408,7 @@ static inline void shop_buy_item(int shop_item_idx)
     Item* item = (Item*)list_get_at_idx(&s_shop_items_container.contents_list, shop_item_idx);
 
     g_game_vars.money -= item_get_buy_price(item);
+    play_sfx(SFX_COIN1_MONEY_CHNG, MM_BASE_PITCH_RATE, SFX_DEFAULT_VOLUME);
     display_money();
     sprite_object_erase_text_under((SpriteObject*)item);
     sprite_object_set_focus((SpriteObject*)item, false);
@@ -545,6 +549,7 @@ static bool shop_reroll_row_on_selection_changed(
 static inline void shop_reroll(void)
 {
     g_game_vars.money -= s_reroll_cost;
+    play_sfx(SFX_COIN1_MONEY_CHNG, MM_BASE_PITCH_RATE, SFX_DEFAULT_VOLUME);
     display_money(); // Update the money display
 
     List* shop_items_list = &s_shop_items_container.contents_list;
@@ -606,7 +611,6 @@ static void next_round_on_pressed(void)
 
 static void reroll_on_pressed(void)
 {
-    // TODO: Add money sound effect
     shop_reroll();
 }
 

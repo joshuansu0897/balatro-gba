@@ -64,6 +64,14 @@ void overlay_close(void)
     REG_DISPCNT = s_saved_dispcnt;
 }
 
+void overlay_set_dimmed(bool dimmed)
+{
+    if (!s_is_open)
+        return;
+
+    REG_BLDY = BLDY_BUILD(dimmed ? OVERLAY_FADE_LEVEL : 0);
+}
+
 bool overlay_are_keys_released(void)
 {
     return key_curr_state() == 0;

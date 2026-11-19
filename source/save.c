@@ -3,10 +3,14 @@
  */
 #include "save.h"
 
+#include "affine_background.h"
 #include "audio_utils.h"
+#include "boss_blind_effects.h"
 #include "card.h"
 #include "game.h"
+#include "game/deck_pile.h"
 #include "game_variables.h"
+#include "item.h"
 #include "joker.h"
 #include "list.h"
 #include "util.h"
@@ -26,6 +30,7 @@
 // WHY: far from the other sections so they can grow without moving the ranking
 #define RUN_HISTORY_ADDRESS 0x1000
 
+// This could be expanded to add more persistent data sections like unlocks
 #define SAVE_SECTION_FLAG_NONE    0
 #define SAVE_SECTION_FLAG_OPTIONS (1 << 0)
 #define SAVE_SECTION_FLAG_GAME    (1 << 1)
@@ -33,8 +38,6 @@
 #define CHECK_MAGIC     0x4C414247 // Spells GBAL, used to determine if the save data is junk
 #define CHECK_HASH_SIZE 7
 #define GIT_HASH_START  17 // starts after "GBALATRO-VERSION:" in the gbalatro_version var
-
-#define SAVE_LABEL_SIZE 16
 
 // WHY: emulators and flashcarts that find the save type by scanning the ROM for this string
 // (VisualBoyAdvance-M for example) give the game no save memory without it and silently drop
@@ -72,6 +75,10 @@ static const SaveHeader SaveHeader_default = {
     .valid_sections = SAVE_SECTION_FLAG_NONE
 };
 
+// Values of SaveOptions.boss_effects, anything else is read as off
+#define BOSS_EFFECTS_SAVED_OFF 0
+#define BOSS_EFFECTS_SAVED_ON  1
+
 // clang-format off
 /**
  * @brief SaveOptions will only contain options data set in the Options Menu
@@ -83,7 +90,7 @@ static const SaveHeader SaveHeader_default = {
  * 2    | 'S'    | ' '    | 'D'    | 'A'    | -            | -
  * 3    | 'T'    | 'A'    | ' '    | '-'    | -            | -
  * 4    | SPEED  | CNTRST | READBL | MUSIC  | OPTN_VALUES  | All 5 option values, followed by some padding,
- * 5    | SOUND  | UNDEF  | UNDEF  | UNDEF  | -            | so that the next section starts at the beginning of the
+ * 5    | SOUND  | BOSSFX | UNDEF  | UNDEF  | -            | so that the next section starts at the beginning of the
  * 6    | UNDEF  | UNDEF  | UNDEF  | UNDEF  | -            | next 4-word row in a hex viewer
  * 7    | UNDEF  | UNDEF  | UNDEF  | UNDEF  | -            | -
  */
@@ -96,7 +103,10 @@ typedef struct SaveOptions
     bool cards_more_readable;
     u8 music_volume;
     u8 sound_volume;
-    s8 padding[11];
+    // WHY: takes one byte of the former padding so the section keeps its size. Saves made before
+    // it existed hold UNDEFINED there, which is read as off.
+    u8 boss_effects;
+    s8 padding[10];
 } SaveOptions;
 
 /**
@@ -110,90 +120,69 @@ static const SaveOptions SaveOptions_default = {
     .cards_more_readable = DEFAULT_MORE_READABLE,
     .music_volume = VOLUME_OPTION_MAX,
     .sound_volume = VOLUME_OPTION_MAX,
+    .boss_effects = BOSS_EFFECTS_SAVED_OFF,
     .padding = {
         UNDEFINED, UNDEFINED, UNDEFINED,
         UNDEFINED, UNDEFINED, UNDEFINED,
         UNDEFINED, UNDEFINED, UNDEFINED,
-        UNDEFINED, UNDEFINED
+        UNDEFINED
     }
 };
 // clang-format on
-
-/**
- * @brief JokerObjectSaveData will hold the minimal amount of data necessary to reconstruct a Joker.
- *         The `id` is a u8 in the base Joker struct, but I made it a u32 here to keep
- *         a better aligment when looking at the save file in a hex viewer.
- */
-typedef struct JokerObjectSaveData
-{
-    u32 id;
-    u32 persistent_state;
-} JokerObjectSaveData;
-
-// clang-format off
-/**
- * @brief SaveGame will contain the data about the current run to be saved to SRAM.
- *         GameVariables was used for this purpose at first, but some data needed to be shared but
- *         not saved, so it couldn't be dumped "as is" anymore and this struct had to be created.
- *
- * word | Byte 0 | Byte 1 | Byte 2 | Byte 3 | name         | purpose
- * -----|--------|--------|--------|--------|--------------|------------------------------------------------------------------
- * 0    | '-'    | 'I'    | 'N'    | 'T'    | TAG          | Spells "-INTERNAL DATA -"
- * 1    | 'E'    | 'R'    | 'N'    | 'A'    | -            | -
- * 2    | 'L'    | ' '    | 'D'    | 'A'    | -            | -
- * 3    | 'T'    | 'A'    | ' '    | '-'    | -            | -
- * 4    | T[0]   | T[1]   | T[2]   | T[3]   | GLOB TIMER   | The global timer used for animations thoughout the game
- * 5    | RNG[0] | RNG[1] | RNG[2] | RNG[3] | RNG INFO     | RNG Info struct, containing the seed used for RNG, either randomly shuffled or chosen by the player
- * 6    | RNG[4] | RNG[5] | RNG[6] | RNG[7] | -            | at game start, and the current position in the RNG sequence for the given seed, since the start of the run
- * 7    | RND[0] | RND[1] | RND[2] | RND[3] | ROUND        | What Round we are about to start
- * 8    | ANT[0] | ANT[1] | ANT[2] | ANT[3] | ANTE         | What Ante we are on
- * 9    | MNY[0] | MNY[1] | MNY[2] | MNY[3] | MONEY        | How much money we currently have left
- * 10   | UNDEF  | UNDEF  | UNDEF  | UNDEF  | PADDING      | Some padding
- * 11   | UNDEF  | UNDEF  | UNDEF  | UNDEF  | -            | -
- * 12   | '-'    | ' '    | 'O'    | 'W'    | TAG          | Spells "- OWNED JOKERS -"
- * 13   | 'N'    | 'E'    | 'D'    | ' '    | -            | -
- * 14   | 'J'    | 'O'    | 'K'    | 'E'    | -            | -
- * 15   | 'R'    | 'S'    | ' '    | '-'    | -            | -
- * 16   | ID[0]  | ID[1]  | ID[2]  | ID[3]  | JOKER DATA 0 | Minimal necessary data to reconstruct a JokerObject
- * 17   | STT[0] | STT[1] | STT[2] | STT[3] | -            | Contains the Joker's `id` and `persistent_state`
- * ...  | ...    | ...    | ...    | ...    | ...          | ...
- * ...  | ...    | ...    | ...    | ...    | ...          | ...
- * ??   | '_'    | 'E'    | 'N'    | 'D'    | END_TAG      | Spells "_END", marks the end of the savefile
- */
-// clang-format on
-typedef struct SaveGame
-{
-    char tag_internal[SAVE_LABEL_SIZE];
-    s32 timer;
-    RngInfo rng_info;
-    int round;
-    int ante;
-    int money;
-    s32 padding[2];
-
-    char tag_jokers[SAVE_LABEL_SIZE];
-    JokerObjectSaveData jokers_data[MAX_JOKERS_HELD_SIZE];
-
-    char tag_end[4];
-} SaveGame;
 
 /**
  * @brief Default value for the SaveGame struct, with tags already set.
  */
 static const SaveGame SaveGame_default = {
     .tag_internal = "-INTERNAL DATA -",
+
+    .game_state = GAME_STATE_BLIND_SELECT,
+
     .timer = 0,
     .rng_info = {0, {0}},
-    .round = 0,
-    .ante = 0,
+
     .money = 0,
-    .padding = {UNDEFINED, UNDEFINED},
+    .hand_size = 0,
+    .ante = 0,
+    .round = 0,
+    .deck = DECK_TYPE_RED,
+    .nb_played_hands = {0},
+
+    .best_hand_score = 0,
+    .nb_skipped_rounds = 0,
+    .nb_unused_discards = 0,
+
+    .current_blind = BLIND_TYPE_SMALL,
+    .next_boss_blind = BLIND_TYPE_BIG,
+    .blinds_states = {0},
+
+    .padding0 = {UNDEFINED},
+
+    .tag_cards = "-PLAYING CARDS -",
+    .nb_playing_cards = UNDEFINED,
+    .playing_cards = {},
+
+    .padding1 = {UNDEFINED},
 
     .tag_jokers = "- OWNED JOKERS -",
+    .nb_jokers = 0,
     .jokers_data = {},
+
+    .padding2 = {UNDEFINED},
+
+    .tag_skip_tags = "-  SKIP TAGS   -",
+    .blind_skip_tags = {0},
+    .nb_owned_skip_tags = 0,
+    .owned_skip_tags = {0},
 
     .tag_end = "_END"
 };
+
+// WHY: a saved run growing past the start of the ranking would overwrite it
+_Static_assert(
+    GAME_ADDRESS + sizeof(SaveGame) <= RUN_HISTORY_ADDRESS,
+    "The saved run overlaps the run history in SRAM"
+);
 
 /**
  * @brief Write raw binary data to SRAM
@@ -313,6 +302,7 @@ void save_options(void)
     options.cards_more_readable = get_cards_more_readable();
     options.music_volume = g_game_vars.music_volume;
     options.sound_volume = g_game_vars.sound_volume;
+    options.boss_effects = boss_blind_is_enabled() ? BOSS_EFFECTS_SAVED_ON : BOSS_EFFECTS_SAVED_OFF;
 
     write_sram(OPTIONS_ADDRESS, (const u8*)&options, sizeof(options));
     set_save_header(SAVE_SECTION_FLAG_OPTIONS);
@@ -335,6 +325,7 @@ void load_options(void)
     set_volume(volume_module_step_to_val(g_game_vars.music_volume));
     set_cards_high_contrast(options.cards_high_contrast);
     set_cards_more_readable(options.cards_more_readable);
+    boss_blind_set_enabled(options.boss_effects == BOSS_EFFECTS_SAVED_ON);
 }
 
 void save_run_history(const RunHistory* history)
@@ -352,31 +343,101 @@ void load_run_history(RunHistory* history)
         run_history_init(history);
 }
 
+/**
+ * @brief Tell whether a SaveGame read from SRAM has the layout this build writes.
+ *
+ * WHY: the SaveHeader tells builds apart by their git hash only, and builds with uncommitted work,
+ * or made where git cannot read the checkout, share the same one. Loading a run saved with another
+ * layout would fill the game with garbage, so every tag has to be where this build puts it.
+ */
+static bool save_game_has_current_layout(const SaveGame* game)
+{
+    const SaveGame* expected = &SaveGame_default;
+
+    return memcmp(game->tag_internal, expected->tag_internal, SAVE_LABEL_SIZE) == 0 &&
+           memcmp(game->tag_cards, expected->tag_cards, SAVE_LABEL_SIZE) == 0 &&
+           memcmp(game->tag_jokers, expected->tag_jokers, SAVE_LABEL_SIZE) == 0 &&
+           memcmp(game->tag_skip_tags, expected->tag_skip_tags, SAVE_LABEL_SIZE) == 0 &&
+           memcmp(game->tag_end, expected->tag_end, sizeof(expected->tag_end)) == 0;
+}
+
 bool is_game_data_valid(void)
 {
     SaveHeader header;
-    return get_save_header(&header) && (header.valid_sections & SAVE_SECTION_FLAG_GAME);
+    if (!get_save_header(&header) || !(header.valid_sections & SAVE_SECTION_FLAG_GAME))
+        return false;
+
+    SaveGame game;
+    read_sram(GAME_ADDRESS, (u8*)&game, sizeof(game));
+
+    return save_game_has_current_layout(&game);
 }
 
-void save_game(void)
+void erase_save_data(void)
+{
+    SaveHeader header;
+    if (!get_save_header(&header))
+        return;
+
+    header.valid_sections &= ~SAVE_SECTION_FLAG_GAME;
+    write_sram(HEADER_ADDRESS, (const u8*)&header, sizeof(header));
+}
+
+void save_game(enum GameState state)
 {
     SaveGame game = SaveGame_default;
 
     // Fixed data
 
+    game.game_state = state;
+
     game.timer = g_game_vars.timer;
     game.rng_info = g_game_vars.rng_info;
-    game.round = g_game_vars.round;
-    game.ante = g_game_vars.ante;
-    game.money = g_game_vars.money;
 
-    // Lists
+    game.money = g_game_vars.money;
+    game.hand_size = g_game_vars.hand_size;
+    game.ante = g_game_vars.ante;
+    game.round = g_game_vars.round;
+    game.deck = g_game_vars.deck;
+    for (enum HandType hand_type = 0; hand_type < HAND_TYPE_MAX; hand_type++)
+        game.nb_played_hands[hand_type] = g_game_vars.nb_played_hands[hand_type];
+
+    game.best_hand_score = g_game_vars.best_hand_score;
+    game.nb_skipped_rounds = g_game_vars.nb_skipped_rounds;
+    game.nb_unused_discards = g_game_vars.nb_unused_discards;
+
+    game.current_blind = g_game_vars.current_blind;
+    game.next_boss_blind = g_game_vars.next_boss_blind;
+    for (enum BlindTokens blind = 0; blind < NUM_BLINDS_PER_ANTE; blind++)
+        game.blinds_states[blind] = g_game_vars.blinds_states[blind];
+
+    // Cards
+
+    for (int idx = 0; idx < MAX_DECK_SIZE; idx++)
+    {
+        Card* card = deck_get_at_idx(idx);
+
+        // No more valid cards mean we've arrived at the end of the Deck
+        if (card == NULL)
+        {
+            game.nb_playing_cards = idx;
+            break;
+        }
+
+        game.playing_cards[idx].suit = card->suit;
+        game.playing_cards[idx].rank = card->rank;
+    }
+
+    if (game.nb_playing_cards == UNDEFINED)
+        game.nb_playing_cards = MAX_DECK_SIZE;
+
+    // Owned Jokers
 
     List* jokers_list = get_jokers_list();
-    int nb_jokers = list_get_len(jokers_list);
+    game.nb_jokers = list_get_len(jokers_list);
 
     int i = 0;
-    for (; i < nb_jokers; i++)
+    for (; i < game.nb_jokers; i++)
     {
         JokerObject* joker_object = list_get_at_idx(jokers_list, (u32)i);
         JokerObjectSaveData data = {
@@ -391,25 +452,131 @@ void save_game(void)
         game.jokers_data[i] = data;
     }
 
+    // Skip Tags
+
+    i = 0;
+    for (; i < NB_SKIPPABLE_BLINDS; i++)
+        game.blind_skip_tags[i] = get_blind_skip_tag_type(i);
+
+    List* owned_skip_tags = get_owned_skip_tags();
+    game.nb_owned_skip_tags = list_get_len(owned_skip_tags);
+    i = 0;
+    for (; i < game.nb_owned_skip_tags; i++)
+    {
+        SkipTag* skip_tag = list_get_at_idx(owned_skip_tags, (u32)i);
+        GBAL_RETURN_IF_NULL(skip_tag, RET_NONE);
+
+        game.owned_skip_tags[i] = skip_tag->type;
+    }
+    for (; i < MAX_SKIP_TAGS - NB_SKIPPABLE_BLINDS; i++)
+        game.owned_skip_tags[i] = UNDEFINED;
+
     write_sram(GAME_ADDRESS, (const u8*)&game, sizeof(game));
     set_save_header(SAVE_SECTION_FLAG_GAME);
 }
 
-void load_game(void)
+void get_game_saved_data(SaveGame* game_data)
 {
+    GBAL_RETURN_IF_NULL(game_data, RET_NONE);
+
     SaveHeader header;
 
     if (!get_save_header(&header) || !(header.valid_sections & SAVE_SECTION_FLAG_GAME))
         return;
 
-    SaveGame game = SaveGame_default;
-    read_sram(GAME_ADDRESS, (u8*)&game, sizeof(game));
+    read_sram(GAME_ADDRESS, (u8*)game_data, sizeof(*game_data));
+}
 
-    g_game_vars.timer = game.timer;
-    rng_restore(game.rng_info);
-    g_game_vars.round = game.round;
-    g_game_vars.ante = game.ante;
-    g_game_vars.money = game.money;
+void load_game(SaveGame* game_data)
+{
+    GBAL_RETURN_IF_NULL(game_data, RET_NONE);
 
-    // TODO: load Jokers from stored minimal data
+    // WHY: game_reset() gives the hands and discards of the Deck in g_game_vars, so the Deck of
+    // the saved run has to be set before it
+    g_game_vars.deck = game_data->deck;
+    game_reset();
+
+    g_game_vars.timer = game_data->timer;
+    rng_restore(game_data->rng_info);
+
+    g_game_vars.money = game_data->money;
+    g_game_vars.hand_size = game_data->hand_size;
+    g_game_vars.ante = game_data->ante;
+    g_game_vars.round = game_data->round;
+    for (enum HandType hand_type = 0; hand_type < HAND_TYPE_MAX; hand_type++)
+        g_game_vars.nb_played_hands[hand_type] = game_data->nb_played_hands[hand_type];
+
+    g_game_vars.best_hand_score = game_data->best_hand_score;
+    g_game_vars.nb_skipped_rounds = game_data->nb_skipped_rounds;
+    g_game_vars.nb_unused_discards = game_data->nb_unused_discards;
+
+    g_game_vars.current_blind = game_data->current_blind;
+    g_game_vars.next_boss_blind = game_data->next_boss_blind;
+    for (enum BlindTokens blind = 0; blind < NUM_BLINDS_PER_ANTE; blind++)
+        g_game_vars.blinds_states[blind] = game_data->blinds_states[blind];
+
+    // Jokers
+
+    int i = 0;
+    for (; i < game_data->nb_jokers; i++)
+    {
+        Joker* joker = joker_new(game_data->jokers_data[i].id);
+        GBAL_RETURN_IF_NULL(joker, RET_NONE);
+        joker->persistent_state = game_data->jokers_data[i].persistent_state;
+
+        JokerObject* joker_object = joker_object_new(joker);
+        GBAL_RETURN_IF_NULL(joker_object, RET_NONE);
+        sprite_object_position((SpriteObject*)joker_object, 260, 0);
+
+        joker_set_rollable(joker->id, false);
+        item_acquire((Item*)joker_object);
+    }
+
+    // Skip Tags
+
+    i = 0;
+    for (; i < NB_SKIPPABLE_BLINDS; i++)
+        set_blind_skip_tag(i, game_data->blind_skip_tags[i]);
+
+    i = 0;
+    for (; i < game_data->nb_owned_skip_tags; i++)
+    {
+        SkipTag* skip_tag = skip_tag_new(game_data->owned_skip_tags[i]);
+        GBAL_RETURN_IF_NULL(skip_tag, RET_NONE);
+
+        add_skip_tag(&skip_tag);
+    }
+
+    // Deck
+
+    for (int i = 0; i < game_data->nb_playing_cards; i++)
+    {
+        Card saved_card = game_data->playing_cards[i];
+        Card* card = card_new(saved_card.suit, saved_card.rank);
+        deck_push(card);
+    }
+
+    display_score(0);
+    display_chips();
+    display_mult();
+    display_hands();
+    display_discards();
+    display_money();
+    display_ante();
+    display_round();
+    display_deck_size_max();
+    deck_pile_show(g_game_vars.deck);
+
+    // Quirk of the Blind panel animation: the background color for Boss Blinds is set during an
+    // animation of the Blind Select screen.
+    // For now, set color here if needed, but when round.c is refactored to use a full-on state
+    // machine, move that animation to it so we don't have to set the color here
+    if (game_data->game_state == GAME_STATE_ROUND && g_game_vars.current_blind >= BLIND_TYPE_BOSS)
+    {
+        affine_background_set_color(
+            blind_get_color(g_game_vars.current_blind, BLIND_SHADOW_COLOR_INDEX)
+        );
+    }
+
+    game_change_state(game_data->game_state);
 }

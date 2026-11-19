@@ -7,6 +7,7 @@
 
 #include "audio_utils.h"
 #include "background_gfx.h"
+#include "boss_blind_effects.h"
 #include "button.h"
 #include "game.h"
 #include "game/common_ui.h"
@@ -19,6 +20,7 @@
 #include "joker.h"
 #include "layout.h"
 #include "list.h"
+#include "save.h"
 #include "selection_grid.h"
 #include "skip_tag.h"
 #include "soundbank.h"
@@ -55,8 +57,9 @@
 #define NUM_SCORE_LERP_STEPS   16
 #define TM_SCORE_LERP_INTERVAL 2
 
-#define GAME_PLAYING_HAND_SEL_Y   1
-#define GAME_PLAYING_JOKERS_SEL_Y 0
+#define GAME_PLAYING_HAND_SEL_Y    1
+#define GAME_PLAYING_JOKERS_SEL_Y  0
+#define GAME_PLAYING_BUTTONS_SEL_Y 2
 
 // Pixel sizes
 #define CARD_FOCUSED_UNSEL_Y   10
@@ -248,6 +251,12 @@ static bool s_discarded_card = false;
 
 static int s_cards_drawn = 0;
 static int s_cards_discarded = 0;
+
+// Set while the hand is shuffled away before leaving the run for the Main Menu
+static bool s_quitting_to_main_menu = false;
+
+// Whether the Boss Blind of the Round lets the hand being played score
+static bool s_played_hand_is_allowed = true;
 
 // Joker description overlay (Hold B on the jokers row)
 enum RoundDescState
@@ -519,6 +528,38 @@ void set_retrigger(bool new_retrigger)
     s_retrigger = new_retrigger;
 }
 
+static inline void print_blind_score_requirement(void)
+{
+    Rect blind_req_text_rect = BLIND_REQ_TEXT_RECT;
+    u32 blind_requirement = blind_get_requirement(g_game_vars.current_blind, g_game_vars.ante);
+
+    char blind_req_str_buff[UINT_MAX_DIGITS + 1];
+
+    truncate_uint_to_suffixed_str(
+        blind_requirement,
+        rect_width(&BLIND_REQ_TEXT_RECT) / TTE_CHAR_SIZE,
+        blind_req_str_buff
+    );
+
+    // Update text rect for right alignment AFTER shortening the number
+    update_text_rect_to_right_align_str(&blind_req_text_rect, blind_req_str_buff, OVERFLOW_RIGHT);
+
+    tte_printf(
+        "#{P:%d,%d; cx:0x%X000}%s",
+        blind_req_text_rect.left,
+        blind_req_text_rect.top,
+        TTE_RED_PB,
+        blind_req_str_buff
+    );
+    tte_printf(
+        "#{P:%d,%d; cx:0x%X000}$%d",
+        BLIND_REWARD_RECT.left,
+        BLIND_REWARD_RECT.top,
+        TTE_YELLOW_PB,
+        blind_get_reward(g_game_vars.current_blind)
+    ); // Blind reward
+}
+
 /**
  * @brief Outputs the distribution of ranks and suits in the played stack
  * @param ranks_out output - updated such as ranks_out[rank] is the number of cards of rank in the
@@ -714,6 +755,111 @@ static void round_sort_by_suit_on_pressed(void)
     hand_change_sort(true);
 }
 
+// WHY: boss_blind_effects.h cannot include hand.h, which needs GBA headers
+_Static_assert(HIGH_CARD == BOSS_BLIND_LOWEST_HAND_TYPE, "Boss Blinds use other hand types");
+_Static_assert(HAND_TYPE_MAX + 1 == BOSS_BLIND_MAX_HAND_TYPES, "Boss Blinds use other hand types");
+
+/**
+ * @brief Apply what the Boss Blind of the Round changes when the Round starts.
+ */
+static void round_start_boss_blind(void)
+{
+    // Reset what is remembered from the previous Round
+    boss_blind_reset();
+    boss_blind_set_ox_hand(
+        boss_blind_find_most_played_hand(g_game_vars.nb_played_hands, HAND_TYPE_MAX)
+    );
+    s_played_hand_is_allowed = true;
+
+    // Change hands and discards
+    int hands = g_game_vars.hands;
+    int discards = g_game_vars.discards;
+    int hand_size = g_game_vars.hand_size;
+    boss_blind_apply_round_start(g_game_vars.current_blind, &hands, &discards, &hand_size);
+
+    g_game_vars.hands = hands;
+    g_game_vars.discards = discards;
+    g_game_vars.hand_size = hand_size;
+    display_hands();
+    display_discards();
+}
+
+/**
+ * @brief Apply what the Boss Blind of the Round does when the selected hand is played.
+ */
+static void round_apply_boss_blind_to_played_hand(void)
+{
+    enum BlindType blind = g_game_vars.current_blind;
+    int hand_type = get_hand_type();
+    int nb_cards_played = hand_get_nb_selected_cards();
+
+    // Judge the hand
+    // WHY: before it is remembered, or The Eye would reject every hand as already played
+    s_played_hand_is_allowed = boss_blind_validate_play(blind, nb_cards_played, hand_type);
+    boss_blind_register_hand(blind, hand_type);
+
+    // Take money
+    int money_taken = boss_blind_get_tooth_penalty(blind, nb_cards_played);
+    if (boss_blind_is_ox_triggered(blind, hand_type))
+        money_taken = g_game_vars.money;
+
+    if (money_taken <= 0)
+        return;
+
+    // WHY: a Boss Blind takes what the player has but never puts them in debt
+    g_game_vars.money = max(g_game_vars.money - money_taken, 0);
+    play_sfx(SFX_COIN1_MONEY_CHNG, MM_BASE_PITCH_RATE, SFX_DEFAULT_VOLUME);
+    display_money();
+}
+
+/**
+ * @brief Pick at random a held card that is not selected yet.
+ *
+ * @return the index of the card in the hand, or UNDEFINED if there is none left to pick
+ */
+static int round_pick_random_held_card(void)
+{
+    CardObject** hand = get_hand_array();
+    int candidates[MAX_HAND_SIZE];
+    int nb_candidates = 0;
+
+    for (int card_idx = 0; card_idx <= get_hand_top() && nb_candidates < MAX_HAND_SIZE; card_idx++)
+    {
+        if (hand[card_idx] != NULL && !card_object_is_selected(hand[card_idx]))
+            candidates[nb_candidates++] = card_idx;
+    }
+
+    if (nb_candidates == 0)
+        return UNDEFINED;
+
+    // WHY: the shuffle sequence is reused so the picks follow the seed of the run. A sequence of
+    // their own would change the layout of the saved runs.
+    return candidates[rng_get_u32(RNG_SEQ_CARD_SHUFFLE) % nb_candidates];
+}
+
+/**
+ * @brief Select the held cards the Boss Blind of the Round takes after a hand, chosen at random.
+ *
+ * @return true if at least one card was selected and has to be discarded
+ */
+static bool round_select_cards_taken_by_boss_blind(void)
+{
+    int nb_cards_to_take = boss_blind_get_hook_count(g_game_vars.current_blind);
+    bool is_any_card_taken = false;
+
+    for (int i = 0; i < nb_cards_to_take; i++)
+    {
+        int card_idx = round_pick_random_held_card();
+        if (card_idx == UNDEFINED)
+            break;
+
+        card_object_set_selected(get_hand_array()[card_idx], true);
+        is_any_card_taken = true;
+    }
+
+    return is_any_card_taken;
+}
+
 /**
  * @brief Triggers the playing of the currently selected cards in hand
  */
@@ -721,6 +867,8 @@ static inline void round_execute_play_hand(void)
 {
     if (!can_play_hand())
         return;
+
+    round_apply_boss_blind_to_played_hand();
 
     set_hand_state(HAND_PLAY);
 
@@ -952,24 +1100,121 @@ static void round_start_shuffling(void)
 }
 
 /**
- * @brief Abandon the Round, which then ends as a loss.
+ * @brief Tell whether the shuffle that ends the Round has taken every card out of the hand.
  */
-static void round_forfeit(void)
+static inline bool round_is_hand_shuffled_away(void)
 {
-    // WHY: with no hands left and the score under the Blind requirement, shuffling the hand
-    // away lets round_discarded_cards_loop() switch to the Game Over state by itself
-    g_game_vars.hands = 0;
-    display_hands();
+    return hand_nb_held_cards() == 0 && get_hand_state() == HAND_SHUFFLING && s_discard_top >= -1 &&
+           g_game_vars.timer > FRAMES(10);
+}
 
+/**
+ * @brief Start leaving the run for the Main Menu. The run is not lost: it stays saved as it was
+ * when the Round started and can be resumed from the Run Setup screen.
+ */
+static void round_quit_to_main_menu(void)
+{
+    s_quitting_to_main_menu = true;
+
+    // WHY: shuffling the hand away first puts every card back in a pile, where
+    // round_leave_to_main_menu() can collect them
     round_start_shuffling();
     g_game_vars.timer = TM_ZERO;
 }
+
+/**
+ * @brief Tear the run down and open the Main Menu, once the hand has been shuffled away.
+ */
+static void round_leave_to_main_menu(void)
+{
+    s_quitting_to_main_menu = false;
+
+    // Return every card to the Deck, where game_reset() destroys them
+    Card* discarded_card = NULL;
+    while ((discarded_card = discard_pop()))
+        deck_push(discarded_card);
+
+    // Remove what game_reset() leaves on screen
+    remove_all_skip_tags();
+    deck_pile_hide();
+
+    game_reset();
+    // WHY: a seed left set is offered again by the Run Setup screen, which then opens on its
+    // New Run tab instead of the Resume one
+    g_game_vars.rng_info.seed = UNDEFINED;
+
+    game_change_state(GAME_STATE_MAIN_MENU);
+}
+
+/**
+ * @brief Hide the sprites of the Round so a full-screen page can be drawn over it.
+ */
+static void round_hide_screen(void)
+{
+    sprite_hide(g_game_vars.playing_blind_token);
+    deck_pile_hide();
+    sprite_object_hide_all_in_list(get_jokers_list());
+    sprite_object_hide_all_in_list(get_owned_skip_tags());
+    CardObject** hand = get_hand_array();
+    for (int i = 0; i <= get_hand_top(); i++)
+    {
+        sprite_object_hide((SpriteObject*)hand[i]);
+    }
+}
+
+/**
+ * @brief Draw the background and the sprites of the Round again after round_hide_screen().
+ *
+ * WHY: the text is not printed again here, the pause overlay restores it as it was
+ */
+static void round_show_screen(void)
+{
+    round_change_background_selecting();
+    if (game_round_selection_grid.selection.y == GAME_PLAYING_BUTTONS_SEL_Y)
+        round_button_set_highlight(game_round_selection_grid.selection.x, true);
+
+    sprite_unhide(g_game_vars.playing_blind_token);
+    deck_pile_show(g_game_vars.deck);
+    sprite_object_unhide_all_in_list(get_jokers_list());
+    sprite_object_unhide_all_in_list(get_owned_skip_tags());
+    CardObject** hand = get_hand_array();
+    for (int i = 0; i <= get_hand_top(); i++)
+    {
+        sprite_object_unhide((SpriteObject*)hand[i]);
+    }
+}
+
+/**
+ * @brief Get the reminder of the Boss Blind effect shown on the pause menu.
+ *
+ * @return the text, or NULL if the Blind of the Round has no effect
+ */
+static const char* round_get_pause_note(void)
+{
+    static char ox_text[BOSS_BLIND_EFFECT_TEXT_SIZE];
+    enum BlindType blind = g_game_vars.current_blind;
+
+    if (!boss_blind_is_ox_active(blind))
+        return boss_blind_get_effect_text(blind);
+
+    const char* hand_name = get_hand_type_name(boss_blind_get_ox_hand());
+    boss_blind_format_ox_text(ox_text, sizeof(ox_text), hand_name);
+
+    return ox_text;
+}
+
+static const PauseMenuHost ROUND_PAUSE_HOST = {
+    .quit_to_main_menu = round_quit_to_main_menu,
+    .hide_screen = round_hide_screen,
+    .show_screen = round_show_screen,
+    .get_note = round_get_pause_note,
+};
 
 static inline void round_process_hand_select_input(void)
 {
     if (key_hit(KEY_PAUSE_GAME))
     {
-        pause_menu_open(round_forfeit);
+        pause_menu_open(&ROUND_PAUSE_HOST);
         return;
     }
 
@@ -1327,6 +1572,10 @@ static inline void round_process_input_and_state(void)
         {
             // protect against score overflow
             s_temp_score = u32_protected_mult(g_game_vars.chips, g_game_vars.mult);
+            // WHY: a hand the Boss Blind does not allow is played, but for nothing
+            if (!s_played_hand_is_allowed)
+                s_temp_score = 0;
+
             s_lerped_temp_score = int2fx(s_temp_score);
             s_lerped_score = int2fx(g_game_vars.score);
 
@@ -1446,8 +1695,7 @@ static inline enum GameState check_game_over_state(void)
 static inline void round_discarded_cards_loop(void)
 {
     // Discarded cards loop (mainly for shuffling)
-    if (hand_nb_held_cards() == 0 && get_hand_state() == HAND_SHUFFLING && s_discard_top >= -1 &&
-        g_game_vars.timer > FRAMES(10))
+    if (round_is_hand_shuffled_away())
     {
         // Bybass card shuffling if the game is over (be it win or lose)
         enum GameState game_over_state = check_game_over_state();
@@ -1471,7 +1719,7 @@ static inline void round_discarded_cards_loop(void)
             discarded_card_object = card_object_new(discard_pop());
 
             // Set the sprite for the discarded card object. Reuse Id 0 to save a sprite
-            card_object_set_sprite(discarded_card_object, 0);
+            card_object_set_sprite_face_down(discarded_card_object, g_game_vars.deck, 0);
             sprite_object_reset_transform((SpriteObject*)discarded_card_object);
 
             discarded_card_object->tx = int2fx(204);
@@ -1888,7 +2136,7 @@ static bool joker_object_score(
             joker_effect->money
         );
         joker_scoring_increment_text_cursor(&cursorPosX);
-        // TODO: Money sound effect
+        sfx_id = SFX_COIN3_ACCUM;
     }
     // custom message for Jokers (including retriggers where Jokers will say "Again!")
     // joker_effect->message will have been set if the Joker had anything custom to say
@@ -2294,6 +2542,11 @@ static bool play_ended_played_cards_update(int played_idx)
                 {
                     round_start_shuffling();
                 }
+                else if (round_select_cards_taken_by_boss_blind())
+                {
+                    // The selected cards are discarded like any other, then the hand is refilled
+                    set_hand_state(HAND_DISCARD);
+                }
                 else
                 {
                     set_hand_state(HAND_DRAW);
@@ -2421,6 +2674,8 @@ static inline void played_cards_update_loop(void)
 
 void round_on_init(void)
 {
+    save_game(GAME_STATE_ROUND);
+
     s_joker_scored_itr = list_itr_create(get_jokers_list());
 
     set_hand_state(HAND_TAGS);
@@ -2453,36 +2708,11 @@ void round_on_init(void)
         sprite_hide(g_game_vars.round_end_blind_token); // Hide the blind token sprite for now
     }
 
-    Rect blind_req_text_rect = BLIND_REQ_TEXT_RECT;
-    u32 blind_requirement = blind_get_requirement(g_game_vars.current_blind, g_game_vars.ante);
-
-    char blind_req_str_buff[UINT_MAX_DIGITS + 1];
-
-    truncate_uint_to_suffixed_str(
-        blind_requirement,
-        rect_width(&BLIND_REQ_TEXT_RECT) / TTE_CHAR_SIZE,
-        blind_req_str_buff
-    );
-
-    // Update text rect for right alignment AFTER shortening the number
-    update_text_rect_to_right_align_str(&blind_req_text_rect, blind_req_str_buff, OVERFLOW_RIGHT);
-
-    tte_printf(
-        "#{P:%d,%d; cx:0x%X000}%s",
-        blind_req_text_rect.left,
-        blind_req_text_rect.top,
-        TTE_RED_PB,
-        blind_req_str_buff
-    );
-    tte_printf(
-        "#{P:%d,%d; cx:0x%X000}$%d",
-        BLIND_REWARD_RECT.left,
-        BLIND_REWARD_RECT.top,
-        TTE_YELLOW_PB,
-        blind_get_reward(g_game_vars.current_blind)
-    ); // Blind reward
+    print_blind_score_requirement();
 
     deck_shuffle(); // Shuffle the deck at the start of the round
+
+    round_start_boss_blind();
 
     skip_tag_process_start(SKIP_TAG_EVENT_ON_ROUND_START);
 
@@ -2511,6 +2741,14 @@ void round_on_update(void)
     // Card logic
 
     round_process_card_draw();
+
+    // WHY: checked before round_discarded_cards_loop(), which would start the end of the Round,
+    // and the rest of the update is skipped because it would draw the Round over the Main Menu
+    if (s_quitting_to_main_menu && round_is_hand_shuffled_away())
+    {
+        round_leave_to_main_menu();
+        return;
+    }
 
     round_discarded_cards_loop();
 
