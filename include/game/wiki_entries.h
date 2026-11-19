@@ -1,13 +1,14 @@
 /**
  * @file wiki_entries.h
  *
- * @brief What the Wiki lists besides the Jokers: the Skip Tags and the Boss Blinds, with the
- * texts the game has nowhere else.
+ * @brief What the Wiki lists besides the Jokers: the Skip Tags, the Boss Blinds and the packs,
+ * with the texts the game has nowhere else.
  */
 #ifndef GAME_WIKI_ENTRIES_H
 #define GAME_WIKI_ENTRIES_H
 
 #include "blind.h"
+#include "item.h"
 #include "skip_tag.h"
 
 typedef struct
@@ -47,5 +48,23 @@ enum BlindType wiki_entries_get_boss(int boss_idx);
  * @return the text, or NULL if the Blind has no effect or the Boss effects are off
  */
 const char* wiki_entries_get_boss_text(enum BlindType boss);
+
+typedef struct
+{
+    enum ItemType type;
+    const char* description;
+} WikiPackEntry;
+
+/**
+ * @brief Get how many packs the Wiki lists.
+ */
+int wiki_entries_get_nb_packs(void);
+
+/**
+ * @brief Get a pack of the Wiki.
+ *
+ * @return the entry, or NULL if @p pack_idx is out of range
+ */
+const WikiPackEntry* wiki_entries_get_pack(int pack_idx);
 
 #endif // GAME_WIKI_ENTRIES_H
