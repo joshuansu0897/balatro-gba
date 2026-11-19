@@ -149,6 +149,29 @@ int boss_blind_find_most_played_hand(const uint32_t nb_played_hands[], int nb_ha
     return most_played_idx + BOSS_BLIND_LOWEST_HAND_TYPE;
 }
 
+const char* boss_blind_get_name(enum BlindType id)
+{
+    switch (id)
+    {
+        case BLIND_TYPE_HOOK:
+            return "The Hook";
+        case BLIND_TYPE_OX:
+            return "The Ox";
+        case BLIND_TYPE_PSYCHIC:
+            return "The Psychic";
+        case BLIND_TYPE_WATER:
+            return "The Water";
+        case BLIND_TYPE_EYE:
+            return "The Eye";
+        case BLIND_TYPE_NEEDLE:
+            return "The Needle";
+        case BLIND_TYPE_TOOTH:
+            return "The Tooth";
+        default:
+            return NULL;
+    }
+}
+
 // WHY: on-screen text is centered on a grid of whole characters, which is only exact for an even
 // number of them. Every text below has an even length, the unit tests check it.
 const char* boss_blind_get_effect_text(enum BlindType id)

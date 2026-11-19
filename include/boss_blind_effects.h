@@ -130,6 +130,13 @@ void boss_blind_reset(void);
 int boss_blind_find_most_played_hand(const uint32_t nb_played_hands[], int nb_hand_types);
 
 /**
+ * @brief Get the name of a Boss Blind that has one of the effects of this module.
+ *
+ * @return the name, whether the effects are on or off, or NULL for any other Blind
+ */
+const char* boss_blind_get_name(enum BlindType id);
+
+/**
  * @brief Get a short text describing the effect of a Blind.
  *
  * @return the text, or NULL if the Blind has no effect or if its text depends on the run (The Ox,

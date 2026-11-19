@@ -196,6 +196,25 @@ void test_effect_texts(void)
         assert(boss_blind_get_effect_text(BLINDS_WITHOUT_EFFECT[i]) == NULL);
 }
 
+void test_names(void)
+{
+    assert(strcmp(boss_blind_get_name(BLIND_TYPE_HOOK), "The Hook") == 0);
+    assert(strcmp(boss_blind_get_name(BLIND_TYPE_OX), "The Ox") == 0);
+    assert(strcmp(boss_blind_get_name(BLIND_TYPE_PSYCHIC), "The Psychic") == 0);
+    assert(strcmp(boss_blind_get_name(BLIND_TYPE_WATER), "The Water") == 0);
+    assert(strcmp(boss_blind_get_name(BLIND_TYPE_EYE), "The Eye") == 0);
+    assert(strcmp(boss_blind_get_name(BLIND_TYPE_NEEDLE), "The Needle") == 0);
+    assert(strcmp(boss_blind_get_name(BLIND_TYPE_TOOTH), "The Tooth") == 0);
+
+    for (size_t i = 0; i < NB_BLINDS_WITHOUT_EFFECT; i++)
+        assert(boss_blind_get_name(BLINDS_WITHOUT_EFFECT[i]) == NULL);
+
+    // A name does not depend on the effects being on, unlike the effect texts
+    boss_blind_set_enabled(false);
+    assert(strcmp(boss_blind_get_name(BLIND_TYPE_HOOK), "The Hook") == 0);
+    boss_blind_set_enabled(true);
+}
+
 void test_ox_text(void)
 {
     // Every hand name shown by the game
@@ -286,6 +305,7 @@ int main()
     test_ox_only_punishes_the_most_played_hand();
     test_most_played_hand();
     test_effect_texts();
+    test_names();
     test_ox_text();
 
     printf("-------------------------------------------------------------------------------\n");
