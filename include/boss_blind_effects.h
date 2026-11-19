@@ -79,6 +79,21 @@ void boss_blind_apply_round_start(enum BlindType id, int* hands, int* discards, 
 bool boss_blind_validate_play(enum BlindType id, int hand_selections, int hand_type);
 
 /**
+ * @brief Tell whether the Blind refuses the selected cards as a hand, so it cannot be played.
+ *
+ * Only The Psychic refuses a play. The other Blinds let a hand they do not allow be played for
+ * nothing, see boss_blind_validate_play().
+ *
+ * @param id the Blind of the Round
+ * @param hand_selections number of cards selected
+ * @param nb_held_cards number of cards in hand, the selected ones included
+ *
+ * @return true if the hand cannot be played. Never when there are not enough cards in hand to
+ *         make a hand the Blind accepts, as the Round could not end.
+ */
+bool boss_blind_blocks_play(enum BlindType id, int hand_selections, int nb_held_cards);
+
+/**
  * @brief Get how many held cards the Blind discards after each hand played.
  */
 int boss_blind_get_hook_count(enum BlindType id);

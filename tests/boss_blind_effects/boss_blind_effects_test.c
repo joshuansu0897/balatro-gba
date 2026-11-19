@@ -66,6 +66,47 @@ void test_other_blinds_start_the_round_unchanged(void)
     assert(hands == 4 && discards == 4 && hand_size == 8);
 }
 
+void test_psychic_refuses_hands_of_less_than_five_cards(void)
+{
+    const int cards_held = 8;
+
+    for (int cards_selected = 1; cards_selected <= 4; cards_selected++)
+        assert(boss_blind_blocks_play(BLIND_TYPE_PSYCHIC, cards_selected, cards_held));
+
+    assert(!boss_blind_blocks_play(BLIND_TYPE_PSYCHIC, 5, cards_held));
+
+    // Exactly five cards left: the only hand that can be played is all of them
+    assert(boss_blind_blocks_play(BLIND_TYPE_PSYCHIC, 4, 5));
+    assert(!boss_blind_blocks_play(BLIND_TYPE_PSYCHIC, 5, 5));
+}
+
+void test_psychic_lets_a_short_hand_be_played_when_five_cannot_be_reached(void)
+{
+    // With less than five cards held no selection can satisfy the Blind. Refusing every play
+    // would leave the Round with no way to end, so the hand is played, for nothing.
+    assert(!boss_blind_blocks_play(BLIND_TYPE_PSYCHIC, 4, 4));
+    assert(!boss_blind_blocks_play(BLIND_TYPE_PSYCHIC, 1, 3));
+    assert(!boss_blind_validate_play(BLIND_TYPE_PSYCHIC, 4, PAIR));
+}
+
+void test_only_the_psychic_refuses_a_play(void)
+{
+    boss_blind_reset();
+    boss_blind_register_hand(BLIND_TYPE_EYE, PAIR);
+
+    // The Eye lets a repeated hand be played, for nothing
+    assert(!boss_blind_blocks_play(BLIND_TYPE_EYE, 2, 8));
+    assert(!boss_blind_blocks_play(BLIND_TYPE_HOOK, 2, 8));
+    assert(!boss_blind_blocks_play(BLIND_TYPE_NEEDLE, 2, 8));
+    for (size_t i = 0; i < NB_BLINDS_WITHOUT_EFFECT; i++)
+        assert(!boss_blind_blocks_play(BLINDS_WITHOUT_EFFECT[i], 2, 8));
+
+    // Nothing is refused while the effects are off
+    boss_blind_set_enabled(false);
+    assert(!boss_blind_blocks_play(BLIND_TYPE_PSYCHIC, 2, 8));
+    boss_blind_set_enabled(true);
+}
+
 void test_psychic_only_lets_five_cards_score(void)
 {
     assert(!boss_blind_validate_play(BLIND_TYPE_PSYCHIC, 1, HIGH_CARD));
@@ -296,6 +337,9 @@ int main()
     test_needle_leaves_one_hand();
     test_water_leaves_no_discard();
     test_other_blinds_start_the_round_unchanged();
+    test_psychic_refuses_hands_of_less_than_five_cards();
+    test_psychic_lets_a_short_hand_be_played_when_five_cannot_be_reached();
+    test_only_the_psychic_refuses_a_play();
     test_psychic_only_lets_five_cards_score();
     test_eye_lets_each_hand_type_score_once_per_round();
     test_eye_only_remembers_hands_when_it_is_the_blind();
