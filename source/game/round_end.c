@@ -2,11 +2,14 @@
 
 #include "affine_background.h"
 #include "affine_background_gfx.h"
+#include "audio_utils.h"
 #include "deck_types.h"
 #include "game.h"
 #include "game_variables.h"
 #include "layout.h"
+#include "random.h"
 #include "skip_tag.h"
+#include "soundbank.h"
 #include "state_machine.h"
 #include "timer.h"
 #include "util.h"
@@ -42,6 +45,9 @@ static const u32 TM_END_DISPLAY_SCORE_MIN = 4;
 static const u32 TM_DISMISS_ROUND_END_TM = 20;
 
 static const u32 REWARD_PANEL_BORDER_PID = 19;
+
+// Each counted reward dollar plays at a random pitch within this range around the base rate
+static const u32 REWARD_COUNT_SFX_PITCH_RANGE = 256;
 
 static const u32 ROUND_END_BLACK_PANEL_INIT_BOTTOM_SE = 12;
 static const u32 ROUND_END_REWARD_TEXT_X = 88;
@@ -290,12 +296,21 @@ static void round_end_display_score_min(void)
     }
 }
 
+/**
+ * @brief Play the coin sound of one reward dollar being counted, at a slightly random pitch.
+ */
+static inline void round_end_play_reward_count_sfx(void)
+{
+    u32 pitch_offset = rng_get_u32(RNG_SEQ_MISC) % REWARD_COUNT_SFX_PITCH_RANGE;
+    int pitch_rate = MM_BASE_PITCH_RATE + pitch_offset - REWARD_COUNT_SFX_PITCH_RANGE / 2;
+
+    play_sfx(SFX_COIN3_ACCUM, pitch_rate, SFX_DEFAULT_VOLUME);
+}
+
 static void round_end_update_blind_reward(void)
 {
     if (g_game_vars.timer % FRAMES(20) != 0)
         return;
-
-    // TODO: Add sound effect here
 
     if (s_blind_reward > 0)
     {
@@ -314,6 +329,7 @@ static void round_end_update_blind_reward(void)
             TTE_YELLOW_PB,
             blind_get_reward(g_game_vars.current_blind) - s_blind_reward
         );
+        round_end_play_reward_count_sfx();
     }
     else if (g_game_vars.timer > FRAMES(20))
     {
@@ -423,6 +439,7 @@ static inline void round_end_print_current_reward(void)
             TTE_YELLOW_PB,
             accumulated_reward * s_reward_data[s_current_reward].multiplier
         );
+        round_end_play_reward_count_sfx();
 
         if (s_reward_data[s_current_reward].remaining <= 0)
         {
@@ -466,6 +483,7 @@ static inline void round_end_cashout(void)
 {
     // Reward the player
     g_game_vars.money += s_cashout;
+    play_sfx(SFX_COIN1_MONEY_CHNG, MM_BASE_PITCH_RATE, SFX_DEFAULT_VOLUME);
     display_money();
 
     const DeckRules* deck_rules = deck_get_rules(g_game_vars.deck);
@@ -495,6 +513,7 @@ static void round_end_display_cashout()
             omit_space ? "" : " ",
             s_cashout
         );
+        play_sfx(SFX_COIN6_CASHOUT, MM_BASE_PITCH_RATE, SFX_DEFAULT_VOLUME);
     }
 
     // Wait until the player presses A to cash out

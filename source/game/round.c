@@ -1888,7 +1888,7 @@ static bool joker_object_score(
             joker_effect->money
         );
         joker_scoring_increment_text_cursor(&cursorPosX);
-        // TODO: Money sound effect
+        sfx_id = SFX_COIN3_ACCUM;
     }
     // custom message for Jokers (including retriggers where Jokers will say "Again!")
     // joker_effect->message will have been set if the Joker had anything custom to say
