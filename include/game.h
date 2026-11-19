@@ -3,6 +3,7 @@
 
 #include "game_variables.h"
 #include "item.h"
+#include "pack_rules.h"
 #include "sprite_container.h"
 
 #include <tonc.h>
@@ -12,6 +13,10 @@
 // number of slots of the run. This doesn't account for negatives right now.
 #define MAX_JOKERS_HELD_SIZE 6
 #define MAX_SHOP_ITEMS       2 // TODO: Make this dynamic
+// One Joker Pack and one Planet Pack
+#define MAX_PACKS_FOR_SALE   2
+// WHY: a Planet Pack opens over the Shop items, which wait aside and can all be Planets
+#define MAX_PLANETS_FOR_SALE (MAX_SHOP_ITEMS + PACK_NB_CHOICES)
 #define FRAMES(x)            (((x) + (g_game_vars.game_speed) - 1) / (g_game_vars.game_speed))
 
 // TODO: Can make these dynamic to support interest-related jokers and vouchers

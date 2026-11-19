@@ -28,7 +28,9 @@ Item* item_roll_new(enum ItemType item_type, enum RngSequence key)
     }
 
     Item* ret_item = item_funcs->roll_new(key);
-    ret_item->is_owned = false;
+    // WHY: a type can have nothing left to roll, when every Joker is owned for example
+    if (ret_item != NULL)
+        ret_item->is_owned = false;
 
     return ret_item;
 }
