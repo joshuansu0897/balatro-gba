@@ -113,6 +113,23 @@ enum HandState get_hand_state(void);
 HandBonus get_hand_total_bonus(enum HandType hand_type);
 
 /**
+ * @brief Get the level of a Hand, 1 until a Planet raises it.
+ *
+ * The Royal Flush shares the level of the Straight Flush.
+ */
+u32 hand_get_level(enum HandType hand_type);
+
+/**
+ * @brief Raise a Hand by one level.
+ */
+void hand_level_up(enum HandType hand_type);
+
+/**
+ * @brief Get the Chips and Mult a Hand gains with each level.
+ */
+HandBonus hand_get_level_up_bonus(enum HandType hand_type);
+
+/**
  * @brief Determine the HandType and ContainedHandTypes of the currently selected Cards,
  *         then print the Hand's name, chips, and mult on screen.
  */

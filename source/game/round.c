@@ -187,6 +187,12 @@ static void round_sort_by_suit_on_pressed(void);
 static bool can_discard_hand(void);
 static bool can_play_hand(void);
 
+// Index of the Play button in game_round_buttons
+#define ROUND_PLAY_HAND_BTN_IDX 0
+
+// A low version of the button sound, played when the Boss Blind refuses a hand
+#define PLAY_BLOCKED_SFX_PITCH_RATE (MM_BASE_PITCH_RATE / 2)
+
 // clang-format off
 // Array of buttons by horizontal selection index (x)
 static Button game_round_buttons[] = {
@@ -700,6 +706,33 @@ static bool can_discard_hand(void)
 }
 
 /**
+ * @brief Tell whether the Boss Blind of the Round refuses the selected cards as a hand.
+ */
+static bool round_is_play_blocked_by_boss_blind(void)
+{
+    int nb_selected_cards = hand_get_nb_selected_cards();
+
+    return nb_selected_cards > 0 && boss_blind_blocks_play(
+                                        g_game_vars.current_blind,
+                                        nb_selected_cards,
+                                        hand_nb_held_cards()
+                                    );
+}
+
+/**
+ * @brief Play the sound that tells the player the Boss Blind refuses their hand, if it does.
+ *
+ * WHY: a button that cannot be pressed stays silent, and Play would seem broken
+ */
+static void round_warn_if_play_is_blocked(void)
+{
+    if (get_hand_state() != HAND_SELECT || !round_is_play_blocked_by_boss_blind())
+        return;
+
+    play_sfx(SFX_BUTTON, PLAY_BLOCKED_SFX_PITCH_RATE, SFX_DEFAULT_VOLUME);
+}
+
+/**
  * @brief Determines whether the "Play" button can be pressed or not
  *
  * @return true if the hand can be played, false otherwise
@@ -707,7 +740,8 @@ static bool can_discard_hand(void)
 static bool can_play_hand(void)
 {
     return (
-        g_game_vars.hands > 0 && get_hand_state() == HAND_SELECT && hand_get_nb_selected_cards() > 0
+        g_game_vars.hands > 0 && get_hand_state() == HAND_SELECT &&
+        hand_get_nb_selected_cards() > 0 && !round_is_play_blocked_by_boss_blind()
     );
 }
 
@@ -1016,6 +1050,7 @@ static void round_hand_row_on_key_transit(SelectionGrid* selection_grid, Selecti
     }
     else if (key_hit(KEY_PLAY_HAND))
     {
+        round_warn_if_play_is_blocked();
         round_execute_play_hand();
     }
     else if (key_hit(KEY_DISCARD_HAND))
@@ -1067,6 +1102,9 @@ static void round_button_row_on_key_hit(SelectionGrid* selection_grid, Selection
 {
     if (key_hit(KEY_CONFIRM))
     {
+        if (selection->x == ROUND_PLAY_HAND_BTN_IDX)
+            round_warn_if_play_is_blocked();
+
         button_press(&game_round_buttons[selection->x]);
     }
 }

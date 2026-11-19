@@ -90,6 +90,19 @@ bool boss_blind_validate_play(enum BlindType id, int hand_selections, int hand_t
     }
 }
 
+bool boss_blind_blocks_play(enum BlindType id, int hand_selections, int nb_held_cards)
+{
+    if (get_ruling_blind(id) != BLIND_TYPE_PSYCHIC)
+        return false;
+
+    // WHY: with too few cards in hand no selection can satisfy the Blind. Refusing every play
+    // would leave the Round with no way to end, so the hand is played, for nothing.
+    if (nb_held_cards < PSYCHIC_NB_CARDS)
+        return false;
+
+    return hand_selections != PSYCHIC_NB_CARDS;
+}
+
 int boss_blind_get_hook_count(enum BlindType id)
 {
     return (get_ruling_blind(id) == BLIND_TYPE_HOOK) ? HOOK_NB_CARDS : 0;
@@ -147,6 +160,29 @@ int boss_blind_find_most_played_hand(const uint32_t nb_played_hands[], int nb_ha
     }
 
     return most_played_idx + BOSS_BLIND_LOWEST_HAND_TYPE;
+}
+
+const char* boss_blind_get_name(enum BlindType id)
+{
+    switch (id)
+    {
+        case BLIND_TYPE_HOOK:
+            return "The Hook";
+        case BLIND_TYPE_OX:
+            return "The Ox";
+        case BLIND_TYPE_PSYCHIC:
+            return "The Psychic";
+        case BLIND_TYPE_WATER:
+            return "The Water";
+        case BLIND_TYPE_EYE:
+            return "The Eye";
+        case BLIND_TYPE_NEEDLE:
+            return "The Needle";
+        case BLIND_TYPE_TOOTH:
+            return "The Tooth";
+        default:
+            return NULL;
+    }
 }
 
 // WHY: on-screen text is centered on a grid of whole characters, which is only exact for an even

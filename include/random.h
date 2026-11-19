@@ -26,6 +26,7 @@ enum RngSequence
     RNG_SEQ_JOKER_MISPRINT,
     RNG_SEQ_JOKER_RESERVED_PARKING,
     RNG_SEQ_JOKER_BUSINESS_CARD,
+    RNG_SEQ_JOKER_SPACE,
     RNG_SEQ_TAG_TOP_UP,
 
     // For non-gameplay related things such as sound effects or visual effects, so as to not

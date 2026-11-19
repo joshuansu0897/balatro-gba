@@ -4,6 +4,7 @@
 #include "game.h"
 #include "joker.h"
 #include "mgba_logger.h"
+#include "planet.h"
 #include "util.h"
 
 static bool item_always_can_acquire(Item* item);
@@ -38,6 +39,19 @@ ItemFuncs item_func_table[] = {
         .can_acquire = item_always_can_acquire,
         .dispose = card_object_dispose,
         .print_description = NULL
+    },
+
+    // Planets are used when bought, so they are never owned and cannot be sold
+    [ITEM_TYPE_PLANET] = {
+        .roll_new = planet_object_roll_new,
+        .get_buy_price = planet_object_get_buy_price,
+        .get_sell_price = NULL,
+        .get_name = planet_object_get_name,
+        .get_subtype_info = planet_object_get_subtype_info,
+        .acquire = planet_object_acquire,
+        .can_acquire = planet_object_can_acquire,
+        .dispose = planet_object_dispose,
+        .print_description = planet_object_print_description
     }
 };
 // clang-format on

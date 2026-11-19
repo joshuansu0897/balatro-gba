@@ -1,7 +1,8 @@
 /**
  * @file run_info.c
  *
- * @brief Run Info page implementation: the Hand Levels tab and the Deck tab.
+ * @brief Run Info page implementation: the Hand Levels and Deck tabs, and the tab bar they
+ * share with the Wiki.
  */
 #include "game/run_info.h"
 
@@ -9,6 +10,7 @@
 #include "button.h"
 #include "card.h"
 #include "game.h"
+#include "game/wiki.h"
 #include "selection_grid.h"
 #include "state_machine.h"
 
@@ -16,6 +18,7 @@
 #define TAB_MAIN_COLOR_PAL_IDX          1
 #define HANDS_TAB_OUTLINE_COLOR_PAL_IDX 2
 #define DECK_TAB_OUTLINE_COLOR_PAL_IDX  3
+#define WIKI_TAB_OUTLINE_COLOR_PAL_IDX  4
 
 #define HAND_LEVELS_NB_HANDS_SHOWN 7
 
@@ -92,11 +95,13 @@ enum RunInfoState
 {
     RUN_INFO_STATE_HAND_LEVELS,
     RUN_INFO_STATE_PEEK_DECK,
+    RUN_INFO_STATE_WIKI,
     RUN_INFO_STATE_MAX
 };
 
 static void hand_level_state_init(void);
 static void peek_deck_state_init(void);
+static void wiki_state_init(void);
 
 // clang-format off
 static StateInfo state_info[] =
@@ -110,7 +115,12 @@ static StateInfo state_info[] =
     [RUN_INFO_STATE_PEEK_DECK] = STATE_INFO_INIT_UPDATE_FN(
         peek_deck_state_init,
         noop
-    )
+    ),
+    [RUN_INFO_STATE_WIKI] = {
+        .on_init = wiki_state_init,
+        .on_update = noop,
+        .on_exit = wiki_hide
+    }
 };
 // clang-format on
 
@@ -128,6 +138,11 @@ static Button tab_buttons[] = {
     },
     [RUN_INFO_STATE_PEEK_DECK] = {
         DECK_TAB_OUTLINE_COLOR_PAL_IDX,
+        TAB_MAIN_COLOR_PAL_IDX,
+        NULL, NULL
+    },
+    [RUN_INFO_STATE_WIKI] = {
+        WIKI_TAB_OUTLINE_COLOR_PAL_IDX,
         TAB_MAIN_COLOR_PAL_IDX,
         NULL, NULL
     }
@@ -181,6 +196,9 @@ void run_info_show(void)
 
 void run_info_hide(void)
 {
+    // WHY: removing the state machine does not run the exit function of its state
+    wiki_hide();
+
     tte_erase_screen();
     state_machine_remove(&run_info_sm);
 }
@@ -352,6 +370,18 @@ static void peek_deck_state_init(void)
     peek_deck_print_cards();
 }
 
+/**
+ * @brief Clear the content area and let the Wiki draw itself in it
+ */
+static void wiki_state_init(void)
+{
+    main_bg_se_copy_rect(HAND_LEVELS_ARROW_UP_OFF_SRC_RECR, HAND_LEVELS_ARROW_UP_DEST_POS);
+    main_bg_se_copy_rect(HAND_LEVELS_ARROW_DOWN_OFF_SRC_RECR, HAND_LEVELS_ARROW_DOWN_DEST_POS);
+    main_bg_se_copy_expand_tile(RUN_INFO_CLEAR_DEST_RECT, RUN_INFO_CLEAR_SRC_POS);
+
+    wiki_show();
+}
+
 void run_info_update(void)
 {
     enum RunInfoState new_state = RUN_INFO_STATE_MAX;
@@ -363,6 +393,13 @@ void run_info_update(void)
     if (new_state != RUN_INFO_STATE_MAX)
     {
         run_info_handle_tab_change(new_state);
+        return;
+    }
+
+    // The Wiki handles the directions itself
+    if (run_info_sm.state == RUN_INFO_STATE_WIKI)
+    {
+        wiki_update();
         return;
     }
 
@@ -441,7 +478,7 @@ static inline void hand_levels_print_info(void)
             HAND_LEVELS_TEXT_POS.x,
             hand_info_y,
             TTE_DARK_GREEN_TAG,
-            g_game_vars.hand_levels[hand_type - 1] + 1,
+            hand_get_level(hand_type),
             TTE_WHITE_TAG,
             get_hand_type_name(hand_type),
             hand_bonus.chips,

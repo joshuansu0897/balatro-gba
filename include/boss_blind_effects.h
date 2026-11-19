@@ -79,6 +79,21 @@ void boss_blind_apply_round_start(enum BlindType id, int* hands, int* discards, 
 bool boss_blind_validate_play(enum BlindType id, int hand_selections, int hand_type);
 
 /**
+ * @brief Tell whether the Blind refuses the selected cards as a hand, so it cannot be played.
+ *
+ * Only The Psychic refuses a play. The other Blinds let a hand they do not allow be played for
+ * nothing, see boss_blind_validate_play().
+ *
+ * @param id the Blind of the Round
+ * @param hand_selections number of cards selected
+ * @param nb_held_cards number of cards in hand, the selected ones included
+ *
+ * @return true if the hand cannot be played. Never when there are not enough cards in hand to
+ *         make a hand the Blind accepts, as the Round could not end.
+ */
+bool boss_blind_blocks_play(enum BlindType id, int hand_selections, int nb_held_cards);
+
+/**
  * @brief Get how many held cards the Blind discards after each hand played.
  */
 int boss_blind_get_hook_count(enum BlindType id);
@@ -128,6 +143,13 @@ void boss_blind_reset(void);
  * @return the hand type played the most, the lowest one if several are tied or none was played
  */
 int boss_blind_find_most_played_hand(const uint32_t nb_played_hands[], int nb_hand_types);
+
+/**
+ * @brief Get the name of a Boss Blind that has one of the effects of this module.
+ *
+ * @return the name, whether the effects are on or off, or NULL for any other Blind
+ */
+const char* boss_blind_get_name(enum BlindType id);
 
 /**
  * @brief Get a short text describing the effect of a Blind.

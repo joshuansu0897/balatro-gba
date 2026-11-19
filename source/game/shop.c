@@ -41,6 +41,7 @@
 
 // Shop
 #define REROLL_BASE_COST     5 // Base cost for rerolling the shop items
+#define SHOP_PLANET_ODDS     4 // One item for sale out of this many is a Planet
 #define NEXT_ROUND_BTN_SEL_X 0
 
 // Palette IDs
@@ -293,12 +294,20 @@ static void shop_redeem_skip_tags(void)
 
 /**
  * @brief Create a shop top row item - jokers, consumables, and possibly playing cards
- * Currently only jokers are implemented.
+ * Currently Jokers and Planets are implemented.
  */
 static Item* shop_create_top_row_item(void)
 {
-    // TODO: Randomize item type when consumables are implemented
-    return item_roll_new(ITEM_TYPE_JOKER, RNG_SEQ_SHOP_ITEMS);
+    bool is_planet = (rng_get_u32(RNG_SEQ_SHOP_ITEMS) % SHOP_PLANET_ODDS == 0);
+    enum ItemType rolled_type = is_planet ? ITEM_TYPE_PLANET : ITEM_TYPE_JOKER;
+    enum ItemType other_type = is_planet ? ITEM_TYPE_JOKER : ITEM_TYPE_PLANET;
+
+    Item* item = item_roll_new(rolled_type, RNG_SEQ_SHOP_ITEMS);
+    // WHY: a type can run out, when every Joker is owned for example
+    if (item == NULL)
+        item = item_roll_new(other_type, RNG_SEQ_SHOP_ITEMS);
+
+    return item;
 }
 
 /**
@@ -558,7 +567,7 @@ static inline void shop_reroll(void)
 
     while ((item = list_itr_next(&itr)))
     {
-        if (item != NULL && item->type == ITEM_TYPE_JOKER)
+        if (item != NULL)
         {
             item_dispose(&item);
         }
