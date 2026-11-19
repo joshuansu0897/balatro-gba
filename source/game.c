@@ -158,6 +158,14 @@ Card* deck_pop(void)
     return s_deck[s_deck_top--];
 }
 
+Card* deck_get_at_idx(int idx)
+{
+    // WHY: the slots above the top still point to cards that were drawn, they are not in the Deck
+    if (idx < 0 || idx > s_deck_top)
+        return NULL;
+    return s_deck[idx];
+}
+
 void display_ante(void)
 {
     tte_printf(
@@ -219,13 +227,21 @@ void game_init()
     g_game_vars.blinds_states[2] = BLIND_STATE_UPCOMING;
 }
 
-void game_reset()
+void game_reset(void)
 {
     while (list_get_len(&s_owned_jokers_container.contents_list) > 0)
     {
         JokerObject* joker_object = list_get_at_idx(&s_owned_jokers_container.contents_list, 0);
         remove_owned_joker(0);
         joker_object_destroy(&joker_object);
+    }
+
+    // Destroy any preexisting cards in the deck, which would be present if we restart a run
+    Card* card = NULL;
+    while (get_deck_top() >= 0)
+    {
+        card = deck_pop();
+        card_destroy(&card);
     }
 
     tte_erase_screen();
