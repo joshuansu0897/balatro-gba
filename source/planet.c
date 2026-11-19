@@ -185,6 +185,7 @@ void planet_object_acquire(Item* planet_object)
 
     PlanetObject* planet = (PlanetObject*)planet_object;
     hand_level_up(planet->hand_type);
+    hand_show_level_up(planet->hand_type);
     play_sfx(SFX_MULT, MM_BASE_PITCH_RATE, SFX_DEFAULT_VOLUME);
 
     // WHY: a Planet is used as soon as it is bought, it never goes to the inventory

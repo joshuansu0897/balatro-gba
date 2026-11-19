@@ -14,6 +14,7 @@
 #include "game/joker_row.h"
 #include "game/shop_packs.h"
 #include "game_variables.h"
+#include "hand.h"
 #include "joker.h"
 #include "layout.h"
 #include "list.h"
@@ -1111,6 +1112,7 @@ static inline void shop_lights_anim_frame(void)
 void shop_on_update(void)
 {
     s_timer++;
+    hand_update_level_up();
 
     if (s_timer % 20 == 0)
     {
@@ -1131,6 +1133,7 @@ void shop_on_exit(void)
 
     list_clear(shop_items_list);
     shop_packs_dispose();
+    hand_hide_level_up();
 
     state_machine_remove(&shop_sm);
 }

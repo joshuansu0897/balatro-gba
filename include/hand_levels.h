@@ -53,4 +53,21 @@ uint32_t hand_levels_add_level_up(uint32_t nb_level_ups);
  */
 bool hand_levels_has_planet(int hand_type, uint32_t nb_times_played);
 
+/**
+ * @brief Number of frames each part of a level up stays on screen.
+ */
+#define HAND_LEVELS_SHOWN_PART_FRAMES 45
+
+/**
+ * @brief Tell which part of a level up is on screen.
+ *
+ * The name of the hand and its level do not fit together where they are shown, so they take
+ * turns.
+ *
+ * @param nb_frames number of frames since the level up started to be shown
+ *
+ * @return true for the name of the hand, which comes first, false for its level
+ */
+bool hand_levels_is_name_shown(uint32_t nb_frames);
+
 #endif // HAND_LEVELS_H

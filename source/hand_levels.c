@@ -43,3 +43,8 @@ bool hand_levels_has_planet(int hand_type, uint32_t nb_times_played)
 
     return !is_secret || nb_times_played > 0;
 }
+
+bool hand_levels_is_name_shown(uint32_t nb_frames)
+{
+    return (nb_frames / HAND_LEVELS_SHOWN_PART_FRAMES) % 2 == 0;
+}

@@ -17,6 +17,7 @@
 #include "mgba_logger.h"
 #include "soundbank.h"
 
+#include <stdio.h>
 #include <tonc.h>
 
 typedef struct
@@ -253,6 +254,51 @@ static void print_hand_type(const char* hand_type_str)
         TTE_WHITE_PB,
         hand_type_str
     );
+}
+
+// Size of a buffer that holds the text of a level, "lvl 99"
+#define LEVEL_TEXT_SIZE 8
+
+// The level up shown in the left panel, NONE when there is none
+static EWRAM_BSS enum HandType s_level_up_hand;
+static EWRAM_BSS u32 s_level_up_nb_frames;
+
+static void print_level_up_part(void)
+{
+    char level_text[LEVEL_TEXT_SIZE];
+    snprintf(level_text, sizeof(level_text), "lvl %lu", hand_get_level(s_level_up_hand));
+
+    bool is_name_shown = hand_levels_is_name_shown(s_level_up_nb_frames);
+    tte_erase_rect_wrapper(HAND_TYPE_RECT);
+    print_hand_type(is_name_shown ? get_hand_type_name(s_level_up_hand) : level_text);
+}
+
+void hand_show_level_up(enum HandType hand_type)
+{
+    s_level_up_hand = hand_type;
+    s_level_up_nb_frames = 0;
+    print_level_up_part();
+}
+
+void hand_update_level_up(void)
+{
+    if (s_level_up_hand == NONE)
+        return;
+
+    // Print again only when the other part takes its turn
+    bool was_name_shown = hand_levels_is_name_shown(s_level_up_nb_frames);
+    s_level_up_nb_frames++;
+    if (hand_levels_is_name_shown(s_level_up_nb_frames) != was_name_shown)
+        print_level_up_part();
+}
+
+void hand_hide_level_up(void)
+{
+    if (s_level_up_hand == NONE)
+        return;
+
+    s_level_up_hand = NONE;
+    tte_erase_rect_wrapper(HAND_TYPE_RECT);
 }
 
 void compute_hand_value_info(void)
