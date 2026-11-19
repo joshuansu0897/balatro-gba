@@ -41,6 +41,18 @@
 #define BOSS_BLIND_EFFECT_TEXT_SIZE 32
 
 /**
+ * @brief Turn the effects of every Boss Blind on or off. They are off until turned on.
+ *
+ * While they are off, every function of this module answers as for a Blind without effect.
+ */
+void boss_blind_set_enabled(bool is_enabled);
+
+/**
+ * @brief Tell whether the effects of the Boss Blinds are on.
+ */
+bool boss_blind_is_enabled(void);
+
+/**
  * @brief Tell whether a Blind has one of the effects of this module.
  */
 bool boss_blind_has_effect(enum BlindType id);

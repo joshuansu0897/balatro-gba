@@ -220,9 +220,59 @@ void test_ox_text(void)
     assert(strlen(small_text) == sizeof(small_text) - 1);
 }
 
+void test_effects_are_off_until_enabled(void)
+{
+    // Must run first: nothing has enabled the effects yet
+    assert(!boss_blind_is_enabled());
+}
+
+void test_disabled_effects_change_nothing(void)
+{
+    static const enum BlindType BLINDS_WITH_EFFECT[] = {
+        BLIND_TYPE_HOOK, BLIND_TYPE_OX,     BLIND_TYPE_PSYCHIC, BLIND_TYPE_WATER,
+        BLIND_TYPE_EYE,  BLIND_TYPE_NEEDLE, BLIND_TYPE_TOOTH
+    };
+
+    boss_blind_set_enabled(true);
+    boss_blind_reset();
+    boss_blind_set_ox_hand(PAIR);
+    boss_blind_register_hand(BLIND_TYPE_EYE, PAIR);
+
+    boss_blind_set_enabled(false);
+    assert(!boss_blind_is_enabled());
+
+    for (size_t i = 0; i < sizeof(BLINDS_WITH_EFFECT) / sizeof(BLINDS_WITH_EFFECT[0]); i++)
+    {
+        enum BlindType blind = BLINDS_WITH_EFFECT[i];
+        int hands = 4, discards = 4, hand_size = 8;
+
+        boss_blind_apply_round_start(blind, &hands, &discards, &hand_size);
+        assert(hands == 4 && discards == 4 && hand_size == 8);
+
+        assert(!boss_blind_has_effect(blind));
+        assert(boss_blind_validate_play(blind, 2, PAIR));
+        assert(boss_blind_get_hook_count(blind) == 0);
+        assert(boss_blind_get_tooth_penalty(blind, 5) == 0);
+        assert(!boss_blind_is_ox_active(blind));
+        assert(!boss_blind_is_ox_triggered(blind, PAIR));
+        assert(boss_blind_get_effect_text(blind) == NULL);
+    }
+
+    // A hand played while the effects are off is not held against the player once they are on
+    boss_blind_reset();
+    boss_blind_register_hand(BLIND_TYPE_EYE, FLUSH);
+    boss_blind_set_enabled(true);
+    assert(boss_blind_validate_play(BLIND_TYPE_EYE, 5, FLUSH));
+}
+
 int main()
 {
     printf("Testing Boss Blind effects.\n");
+    test_effects_are_off_until_enabled();
+    test_disabled_effects_change_nothing();
+
+    // The effects are on for every test below
+    boss_blind_set_enabled(true);
     test_blinds_with_an_effect();
     test_needle_leaves_one_hand();
     test_water_leaves_no_discard();

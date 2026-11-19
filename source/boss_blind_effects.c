@@ -14,6 +14,7 @@
 #define PSYCHIC_NB_CARDS      5
 #define TOOTH_MONEY_PER_CARD  1
 
+static bool s_is_enabled = false;
 static bool s_eye_played_types[BOSS_BLIND_MAX_HAND_TYPES];
 static int s_ox_hand_type = BOSS_BLIND_LOWEST_HAND_TYPE;
 
@@ -22,9 +23,30 @@ static bool is_hand_type_valid(int hand_type)
     return hand_type >= 0 && hand_type < BOSS_BLIND_MAX_HAND_TYPES;
 }
 
+/**
+ * @brief Get the Blind whose rules apply.
+ *
+ * WHY: every rule goes through this, so that turning the effects off makes each Boss Blind behave
+ * like a Blind without effect in a single place.
+ */
+static enum BlindType get_ruling_blind(enum BlindType id)
+{
+    return s_is_enabled ? id : BLIND_TYPE_SMALL;
+}
+
+void boss_blind_set_enabled(bool is_enabled)
+{
+    s_is_enabled = is_enabled;
+}
+
+bool boss_blind_is_enabled(void)
+{
+    return s_is_enabled;
+}
+
 bool boss_blind_has_effect(enum BlindType id)
 {
-    switch (id)
+    switch (get_ruling_blind(id))
     {
         case BLIND_TYPE_HOOK:
         case BLIND_TYPE_OX:
@@ -42,7 +64,7 @@ bool boss_blind_has_effect(enum BlindType id)
 void boss_blind_apply_round_start(enum BlindType id, int* hands, int* discards, int* hand_size)
 {
     (void)hand_size;
-    switch (id)
+    switch (get_ruling_blind(id))
     {
         case BLIND_TYPE_NEEDLE:
             *hands = NEEDLE_NB_HANDS;
@@ -57,7 +79,7 @@ void boss_blind_apply_round_start(enum BlindType id, int* hands, int* discards, 
 
 bool boss_blind_validate_play(enum BlindType id, int hand_selections, int hand_type)
 {
-    switch (id)
+    switch (get_ruling_blind(id))
     {
         case BLIND_TYPE_PSYCHIC:
             return hand_selections == PSYCHIC_NB_CARDS;
@@ -70,12 +92,12 @@ bool boss_blind_validate_play(enum BlindType id, int hand_selections, int hand_t
 
 int boss_blind_get_hook_count(enum BlindType id)
 {
-    return (id == BLIND_TYPE_HOOK) ? HOOK_NB_CARDS : 0;
+    return (get_ruling_blind(id) == BLIND_TYPE_HOOK) ? HOOK_NB_CARDS : 0;
 }
 
 int boss_blind_get_tooth_penalty(enum BlindType id, int cards_played)
 {
-    if (id != BLIND_TYPE_TOOTH || cards_played <= 0)
+    if (get_ruling_blind(id) != BLIND_TYPE_TOOTH || cards_played <= 0)
         return 0;
 
     return cards_played * TOOTH_MONEY_PER_CARD;
@@ -83,7 +105,7 @@ int boss_blind_get_tooth_penalty(enum BlindType id, int cards_played)
 
 bool boss_blind_is_ox_active(enum BlindType id)
 {
-    return id == BLIND_TYPE_OX;
+    return get_ruling_blind(id) == BLIND_TYPE_OX;
 }
 
 void boss_blind_set_ox_hand(int hand_type)
@@ -103,7 +125,7 @@ bool boss_blind_is_ox_triggered(enum BlindType id, int hand_type)
 
 void boss_blind_register_hand(enum BlindType id, int hand_type)
 {
-    if (id == BLIND_TYPE_EYE && is_hand_type_valid(hand_type))
+    if (get_ruling_blind(id) == BLIND_TYPE_EYE && is_hand_type_valid(hand_type))
         s_eye_played_types[hand_type] = true;
 }
 
@@ -131,7 +153,7 @@ int boss_blind_find_most_played_hand(const uint32_t nb_played_hands[], int nb_ha
 // number of them. Every text below has an even length, the unit tests check it.
 const char* boss_blind_get_effect_text(enum BlindType id)
 {
-    switch (id)
+    switch (get_ruling_blind(id))
     {
         case BLIND_TYPE_HOOK:
             return "Discards 2 cards each hand";

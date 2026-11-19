@@ -5,6 +5,7 @@
 
 #include "affine_background.h"
 #include "audio_utils.h"
+#include "boss_blind_effects.h"
 #include "card.h"
 #include "game.h"
 #include "game/deck_pile.h"
@@ -74,6 +75,10 @@ static const SaveHeader SaveHeader_default = {
     .valid_sections = SAVE_SECTION_FLAG_NONE
 };
 
+// Values of SaveOptions.boss_effects, anything else is read as off
+#define BOSS_EFFECTS_SAVED_OFF 0
+#define BOSS_EFFECTS_SAVED_ON  1
+
 // clang-format off
 /**
  * @brief SaveOptions will only contain options data set in the Options Menu
@@ -85,7 +90,7 @@ static const SaveHeader SaveHeader_default = {
  * 2    | 'S'    | ' '    | 'D'    | 'A'    | -            | -
  * 3    | 'T'    | 'A'    | ' '    | '-'    | -            | -
  * 4    | SPEED  | CNTRST | READBL | MUSIC  | OPTN_VALUES  | All 5 option values, followed by some padding,
- * 5    | SOUND  | UNDEF  | UNDEF  | UNDEF  | -            | so that the next section starts at the beginning of the
+ * 5    | SOUND  | BOSSFX | UNDEF  | UNDEF  | -            | so that the next section starts at the beginning of the
  * 6    | UNDEF  | UNDEF  | UNDEF  | UNDEF  | -            | next 4-word row in a hex viewer
  * 7    | UNDEF  | UNDEF  | UNDEF  | UNDEF  | -            | -
  */
@@ -98,7 +103,10 @@ typedef struct SaveOptions
     bool cards_more_readable;
     u8 music_volume;
     u8 sound_volume;
-    s8 padding[11];
+    // WHY: takes one byte of the former padding so the section keeps its size. Saves made before
+    // it existed hold UNDEFINED there, which is read as off.
+    u8 boss_effects;
+    s8 padding[10];
 } SaveOptions;
 
 /**
@@ -112,11 +120,12 @@ static const SaveOptions SaveOptions_default = {
     .cards_more_readable = DEFAULT_MORE_READABLE,
     .music_volume = VOLUME_OPTION_MAX,
     .sound_volume = VOLUME_OPTION_MAX,
+    .boss_effects = BOSS_EFFECTS_SAVED_OFF,
     .padding = {
         UNDEFINED, UNDEFINED, UNDEFINED,
         UNDEFINED, UNDEFINED, UNDEFINED,
         UNDEFINED, UNDEFINED, UNDEFINED,
-        UNDEFINED, UNDEFINED
+        UNDEFINED
     }
 };
 // clang-format on
@@ -293,6 +302,7 @@ void save_options(void)
     options.cards_more_readable = get_cards_more_readable();
     options.music_volume = g_game_vars.music_volume;
     options.sound_volume = g_game_vars.sound_volume;
+    options.boss_effects = boss_blind_is_enabled() ? BOSS_EFFECTS_SAVED_ON : BOSS_EFFECTS_SAVED_OFF;
 
     write_sram(OPTIONS_ADDRESS, (const u8*)&options, sizeof(options));
     set_save_header(SAVE_SECTION_FLAG_OPTIONS);
@@ -315,6 +325,7 @@ void load_options(void)
     set_volume(volume_module_step_to_val(g_game_vars.music_volume));
     set_cards_high_contrast(options.cards_high_contrast);
     set_cards_more_readable(options.cards_more_readable);
+    boss_blind_set_enabled(options.boss_effects == BOSS_EFFECTS_SAVED_ON);
 }
 
 void save_run_history(const RunHistory* history)
