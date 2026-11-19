@@ -2,6 +2,7 @@
 
 #include "audio_utils.h"
 #include "background_options_menu_gfx.h"
+#include "boss_blind_effects.h"
 #include "button.h"
 #include "card.h"
 #include "game.h"
@@ -22,6 +23,7 @@ enum OptionButtonRows
 {
     GAME_SPEED_ROW_IDX,
     HIGH_CONTRAST_ROW_IDX,
+    BOSS_EFFECTS_ROW_IDX,
     MUSIC_VOLUME_ROW_IDX,
     SOUND_VOLUME_ROW_IDX,
     SAVE_BACK_ROW_IDX,
@@ -50,6 +52,9 @@ enum OptionSpeedButtons
 #define SOUND_BUTTON_OUTLINE_COLOR_PAL_IDX      22
 #define SAVE_BUTTON_OUTLINE_COLOR_PAL_IDX       23
 #define BACK_BUTTON_OUTLINE_COLOR_PAL_IDX       24
+// WHY: added after the other outlines were numbered, renumbering them would mean repainting
+// the whole background
+#define BOSS_BUTTON_OUTLINE_COLOR_PAL_IDX       25
 
 // Define selection grid for the menu buttons
 
@@ -57,6 +62,7 @@ static void game_speed_down_on_pressed(void);
 static void game_speed_up_on_pressed(void);
 static void high_contrast_on_pressed(void);
 static void more_readable_on_pressed(void);
+static void boss_effects_on_pressed(void);
 static void save_on_pressed(void);
 static void back_on_pressed(void);
 static int options_menu_return_upper_rows_size(void);
@@ -106,6 +112,13 @@ static SelectionGridRow options_menu_selection_rows[] = {
         {.wrap = false}
     },
     {
+        BOSS_EFFECTS_ROW_IDX,
+        options_menu_return_upper_rows_size,
+        regular_button_row_on_selection_changed,
+        options_menu_row_on_key_transit,
+        {.wrap = false}
+    },
+    {
         MUSIC_VOLUME_ROW_IDX,
         options_menu_return_upper_rows_size,
         music_volume_row_on_selection_changed,
@@ -134,6 +147,7 @@ static Button options_menu_buttons[NB_OPTIONS_ROWS][2] = {
         {CONTRAST_BUTTON_OUTLINE_COLOR_PAL_IDX, MENU_BUTTON_MAIN_COLOR_PAL_IDX, high_contrast_on_pressed, NULL},
         {READABLE_BUTTON_OUTLINE_COLOR_PAL_IDX, MENU_BUTTON_MAIN_COLOR_PAL_IDX, more_readable_on_pressed, NULL}
     },
+    {{BOSS_BUTTON_OUTLINE_COLOR_PAL_IDX,     MENU_BUTTON_MAIN_COLOR_PAL_IDX, boss_effects_on_pressed,  NULL}},
     {{MUSIC_BUTTON_OUTLINE_COLOR_PAL_IDX,    MENU_BUTTON_MAIN_COLOR_PAL_IDX, NULL,                     NULL}},
     {{SOUND_BUTTON_OUTLINE_COLOR_PAL_IDX,    MENU_BUTTON_MAIN_COLOR_PAL_IDX, NULL,                     NULL}},
     {
@@ -179,16 +193,20 @@ static const Rect     OPTIONS_READABLE_CHECK_NO_SRC_RECT       = { 4, 24,  5, 25
 static const Rect     OPTIONS_READABLE_CHECK_YES_SRC_RECT      = { 6, 24,  7, 25};
 static const BG_POINT OPTIONS_READABLE_CHECK_DEST_POS          = {21,  7};
 
+static const Rect     OPTIONS_BOSS_CHECK_NO_SRC_RECT           = { 8, 24,  9, 25};
+static const Rect     OPTIONS_BOSS_CHECK_YES_SRC_RECT          = {10, 24, 11, 25};
+static const BG_POINT OPTIONS_BOSS_CHECK_DEST_POS              = {20, 10};
+
 static const Rect     OPTIONS_MUSIC_SLIDER_FULL_SRC            = { 9, 20,  9, 20};
 static const Rect     OPTIONS_MUSIC_SLIDER_MID_SRC             = {10, 20, 10, 20};
 static const Rect     OPTIONS_MUSIC_SLIDER_EMPTY_SRC           = {11, 20, 11, 20};
 static const Rect     OPTIONS_SOUND_SLIDER_FULL_SRC            = { 9, 22,  9, 22};
 static const Rect     OPTIONS_SOUND_SLIDER_MID_SRC             = {10, 22, 10, 22};
 static const Rect     OPTIONS_SOUND_SLIDER_EMPTY_SRC           = {11, 22, 11, 22};
-static const BG_POINT OPTIONS_MUSIC_SLIDER_START_POS           = { 5, 11};
-static const BG_POINT OPTIONS_SOUND_SLIDER_START_POS           = { 5, 14};
-static const BG_POINT OPTIONS_MUSIC_SLIDER_END_POS             = {24, 11};
-static const BG_POINT OPTIONS_SOUND_SLIDER_END_POS             = {24, 14};
+static const BG_POINT OPTIONS_MUSIC_SLIDER_START_POS           = {11, 13};
+static const BG_POINT OPTIONS_SOUND_SLIDER_START_POS           = {11, 15};
+static const BG_POINT OPTIONS_MUSIC_SLIDER_END_POS             = {20, 13};
+static const BG_POINT OPTIONS_SOUND_SLIDER_END_POS             = {20, 15};
 static const u8       OPTIONS_MUSIC_SLIDER_SEGMENT_LENGTH      = (OPTIONS_MUSIC_SLIDER_END_POS.x - OPTIONS_MUSIC_SLIDER_START_POS.x + 1)
                                                                     / VOLUME_OPTION_MAX;
 static const u8       OPTIONS_SOUND_SLIDER_SEGMENT_LENGTH      = (OPTIONS_SOUND_SLIDER_END_POS.x - OPTIONS_SOUND_SLIDER_START_POS.x + 1)
@@ -197,10 +215,10 @@ static const u8       OPTIONS_SOUND_SLIDER_SEGMENT_LENGTH      = (OPTIONS_SOUND_
 // Values in pixels
 static const BG_POINT OPTIONS_GAME_SPEED_TEXT_POS        = { 82,  16};
 static const BG_POINT OPTIONS_CARD_SPRITES_TEXT_POS      = { 72,  48};
-static const BG_POINT OPTIONS_MUSIC_VOLUME_TEXT_POS      = { 56,  80};
-static const BG_POINT OPTIONS_MUSIC_VALUE_TEXT_POS       = {160,  80};
-static const BG_POINT OPTIONS_SOUND_VOLUME_TEXT_POS      = { 56, 104};
-static const BG_POINT OPTIONS_SOUND_VALUE_TEXT_POS       = {160, 104};
+static const BG_POINT OPTIONS_MUSIC_VOLUME_TEXT_POS      = { 40, 104};
+static const BG_POINT OPTIONS_MUSIC_VALUE_TEXT_POS       = {176, 104};
+static const BG_POINT OPTIONS_SOUND_VOLUME_TEXT_POS      = { 40, 120};
+static const BG_POINT OPTIONS_SOUND_VALUE_TEXT_POS       = {176, 120};
 static const BG_POINT OPTIONS_BACK_SAVE_TEXT_POS         = { 64, 136};
 // clang-format on
 
@@ -277,6 +295,13 @@ static void update_more_readable_button_graphics(void)
     Rect readable_btn_tiles = (get_cards_more_readable()) ? OPTIONS_READABLE_CHECK_YES_SRC_RECT
                                                           : OPTIONS_READABLE_CHECK_NO_SRC_RECT;
     main_bg_se_copy_rect(readable_btn_tiles, OPTIONS_READABLE_CHECK_DEST_POS);
+}
+
+static void update_boss_effects_button_graphics(void)
+{
+    Rect boss_btn_tiles = (boss_blind_is_enabled()) ? OPTIONS_BOSS_CHECK_YES_SRC_RECT
+                                                    : OPTIONS_BOSS_CHECK_NO_SRC_RECT;
+    main_bg_se_copy_rect(boss_btn_tiles, OPTIONS_BOSS_CHECK_DEST_POS);
 }
 
 static void update_volume_slider_graphics(enum OptionButtonRows sel_row)
@@ -378,13 +403,13 @@ void options_menu_change_background(void)
         TTE_WHITE_PB
     );
     tte_printf(
-        "#{P:%d,%d; cx:0x%X000}Music Volume",
+        "#{P:%d,%d; cx:0x%X000}Music",
         OPTIONS_MUSIC_VOLUME_TEXT_POS.x,
         OPTIONS_MUSIC_VOLUME_TEXT_POS.y,
         TTE_WHITE_PB
     );
     tte_printf(
-        "#{P:%d,%d; cx:0x%X000}Sound Volume",
+        "#{P:%d,%d; cx:0x%X000}Sound",
         OPTIONS_SOUND_VOLUME_TEXT_POS.x,
         OPTIONS_SOUND_VOLUME_TEXT_POS.y,
         TTE_WHITE_PB
@@ -409,6 +434,7 @@ void options_menu_on_init(void)
     update_game_speed_button_graphics();
     update_high_contrast_button_graphics();
     update_more_readable_button_graphics();
+    update_boss_effects_button_graphics();
     update_volume_slider_graphics(MUSIC_VOLUME_ROW_IDX);
     update_volume_slider_graphics(SOUND_VOLUME_ROW_IDX);
 }
@@ -466,6 +492,15 @@ static void more_readable_on_pressed(void)
 {
     set_cards_more_readable(!get_cards_more_readable());
     update_more_readable_button_graphics();
+}
+
+/**
+ * @brief Handles input for the Boss Blind effects toggle button and nothing more.
+ */
+static void boss_effects_on_pressed(void)
+{
+    boss_blind_set_enabled(!boss_blind_is_enabled());
+    update_boss_effects_button_graphics();
 }
 
 /**
