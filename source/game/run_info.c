@@ -1,12 +1,13 @@
 /**
  * @file run_info.c
  *
- * @brief Run Info page implementation: the Hand Levels tab and a Deck tab still to be filled.
+ * @brief Run Info page implementation: the Hand Levels tab and the Deck tab.
  */
 #include "game/run_info.h"
 
 #include "background_run_info_gfx.h"
 #include "button.h"
+#include "card.h"
 #include "game.h"
 #include "selection_grid.h"
 #include "state_machine.h"
@@ -59,6 +60,32 @@ static const Rect     HAND_LEVELS_ARROW_DOWN_OFF_SRC_RECR = {25, 26, 26, 27};
 static const BG_POINT HAND_LEVELS_ARROW_DOWN_DEST_POS     = {14, 17};
 
 static const BG_POINT HAND_LEVELS_TEXT_POS                = {32, 32};
+
+// Deck tab: one row per suit, one column per rank
+static const BG_POINT PEEK_DECK_TEXT_POS                  = { 8, 40};
+static const BG_POINT PEEK_DECK_TOTAL_TEXT_POS            = { 8, 128};
+// clang-format on
+
+#define PEEK_DECK_RANK_COL_WIDTH 2
+#define PEEK_DECK_ROWS_SPACING   (2 * TILE_SIZE)
+
+// Ranks from the Ace down to the 2, each right-aligned in its column
+static const char PEEK_DECK_RANKS_HEADER[] = " A K Q J10 9 8 7 6 5 4 3 2";
+
+typedef struct
+{
+    u8 suit;
+    char letter;
+    const char* color_tag;
+} PeekDeckSuitRow;
+
+// clang-format off
+static const PeekDeckSuitRow PEEK_DECK_SUIT_ROWS[NUM_SUITS] = {
+    {SPADES,   'S', TTE_BLUE_TAG  },
+    {HEARTS,   'H', TTE_RED_TAG   },
+    {CLUBS,    'C', TTE_GREEN_TAG },
+    {DIAMONDS, 'D', TTE_YELLOW_TAG},
+};
 // clang-format on
 
 enum RunInfoState
@@ -222,7 +249,98 @@ static void hand_level_state_init(void)
 }
 
 /**
- * @brief Print menu text and setup background tiles for the Hand Levels menu
+ * @brief Count the cards left in the Deck, by suit and rank.
+ *
+ * @param counts filled with the number of cards left for each suit and rank
+ *
+ * @return the total number of cards left in the Deck
+ */
+static int peek_deck_count_cards(u8 counts[NUM_SUITS][NUM_RANKS])
+{
+    int nb_cards = 0;
+
+    for (int idx = 0; idx <= get_deck_top(); idx++)
+    {
+        const Card* card = deck_get_at_idx(idx);
+        if (card == NULL || card->suit >= NUM_SUITS || card->rank >= NUM_RANKS)
+            continue;
+
+        counts[card->suit][card->rank]++;
+        nb_cards++;
+    }
+
+    return nb_cards;
+}
+
+/**
+ * @brief Write the number of cards left of each rank, in the order of @ref PEEK_DECK_RANKS_HEADER.
+ *
+ * @param cells output string, needs room for every rank column and the terminator
+ * @param counts number of cards left of each rank for one suit
+ */
+static void peek_deck_format_counts(char* cells, const u8 counts[NUM_RANKS])
+{
+    for (int col = 0; col < NUM_RANKS; col++)
+    {
+        u8 count = counts[ACE - col];
+        char* cell = cells + col * PEEK_DECK_RANK_COL_WIDTH;
+
+        // A rank with no card left shows as a dash
+        cell[0] = (count >= 10) ? ('0' + count / 10) : ' ';
+        cell[1] = (count == 0) ? '-' : ('0' + count % 10);
+    }
+
+    cells[NUM_RANKS * PEEK_DECK_RANK_COL_WIDTH] = '\0';
+}
+
+/**
+ * @brief Print how many cards of each suit and rank are left to draw in the Deck.
+ */
+static void peek_deck_print_cards(void)
+{
+    u8 counts[NUM_SUITS][NUM_RANKS] = {0};
+    int nb_cards = peek_deck_count_cards(counts);
+
+    // Print rank names
+    // WHY: the leading space skips the column of the suit letters
+    tte_printf(
+        "#{P:%d,%d}%s %s",
+        PEEK_DECK_TEXT_POS.x,
+        PEEK_DECK_TEXT_POS.y,
+        TTE_WHITE_TAG,
+        PEEK_DECK_RANKS_HEADER
+    );
+
+    // Print one row per suit
+    char cells[NUM_RANKS * PEEK_DECK_RANK_COL_WIDTH + 1];
+    for (int row = 0; row < NUM_SUITS; row++)
+    {
+        const PeekDeckSuitRow* suit_row = &PEEK_DECK_SUIT_ROWS[row];
+        peek_deck_format_counts(cells, counts[suit_row->suit]);
+
+        tte_printf(
+            "#{P:%d,%d}%s%c%s%s",
+            PEEK_DECK_TEXT_POS.x,
+            PEEK_DECK_TEXT_POS.y + (row + 1) * PEEK_DECK_ROWS_SPACING,
+            suit_row->color_tag,
+            suit_row->letter,
+            TTE_WHITE_TAG,
+            cells
+        );
+    }
+
+    // Print total
+    tte_printf(
+        "#{P:%d,%d}%sCards left: %d",
+        PEEK_DECK_TOTAL_TEXT_POS.x,
+        PEEK_DECK_TOTAL_TEXT_POS.y,
+        TTE_WHITE_TAG,
+        nb_cards
+    );
+}
+
+/**
+ * @brief Print menu text and setup background tiles for the Deck menu
  */
 static void peek_deck_state_init(void)
 {
@@ -230,6 +348,8 @@ static void peek_deck_state_init(void)
     main_bg_se_copy_rect(HAND_LEVELS_ARROW_UP_OFF_SRC_RECR, HAND_LEVELS_ARROW_UP_DEST_POS);
     main_bg_se_copy_rect(HAND_LEVELS_ARROW_DOWN_OFF_SRC_RECR, HAND_LEVELS_ARROW_DOWN_DEST_POS);
     main_bg_se_copy_expand_tile(RUN_INFO_CLEAR_DEST_RECT, RUN_INFO_CLEAR_SRC_POS);
+
+    peek_deck_print_cards();
 }
 
 void run_info_update(void)
@@ -245,6 +365,10 @@ void run_info_update(void)
         run_info_handle_tab_change(new_state);
         return;
     }
+
+    // WHY: only the Hand Levels tab scrolls, on the Deck tab this would print the Hands over it
+    if (run_info_sm.state != RUN_INFO_STATE_HAND_LEVELS)
+        return;
 
     enum ScreenVertDir page_dir = 0;
 
