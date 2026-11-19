@@ -250,6 +250,9 @@ static bool s_discarded_card = false;
 static int s_cards_drawn = 0;
 static int s_cards_discarded = 0;
 
+// Set while the hand is shuffled away before leaving the run for the Main Menu
+static bool s_quitting_to_main_menu = false;
+
 // Joker description overlay (Hold B on the jokers row)
 enum RoundDescState
 {
@@ -953,24 +956,57 @@ static void round_start_shuffling(void)
 }
 
 /**
- * @brief Abandon the Round, which then ends as a loss.
+ * @brief Tell whether the shuffle that ends the Round has taken every card out of the hand.
  */
-static void round_forfeit(void)
+static inline bool round_is_hand_shuffled_away(void)
 {
-    // WHY: with no hands left and the score under the Blind requirement, shuffling the hand
-    // away lets round_discarded_cards_loop() switch to the Game Over state by itself
-    g_game_vars.hands = 0;
-    display_hands();
+    return hand_nb_held_cards() == 0 && get_hand_state() == HAND_SHUFFLING && s_discard_top >= -1 &&
+           g_game_vars.timer > FRAMES(10);
+}
 
+/**
+ * @brief Start leaving the run for the Main Menu. The run is not lost: it stays saved as it was
+ * when the Round started and can be resumed from the Run Setup screen.
+ */
+static void round_quit_to_main_menu(void)
+{
+    s_quitting_to_main_menu = true;
+
+    // WHY: shuffling the hand away first puts every card back in a pile, where
+    // round_leave_to_main_menu() can collect them
     round_start_shuffling();
     g_game_vars.timer = TM_ZERO;
+}
+
+/**
+ * @brief Tear the run down and open the Main Menu, once the hand has been shuffled away.
+ */
+static void round_leave_to_main_menu(void)
+{
+    s_quitting_to_main_menu = false;
+
+    // Return every card to the Deck, where game_reset() destroys them
+    Card* discarded_card = NULL;
+    while ((discarded_card = discard_pop()))
+        deck_push(discarded_card);
+
+    // Remove what game_reset() leaves on screen
+    remove_all_skip_tags();
+    deck_pile_hide();
+
+    game_reset();
+    // WHY: a seed left set is offered again by the Run Setup screen, which then opens on its
+    // New Run tab instead of the Resume one
+    g_game_vars.rng_info.seed = UNDEFINED;
+
+    game_change_state(GAME_STATE_MAIN_MENU);
 }
 
 static inline void round_process_hand_select_input(void)
 {
     if (key_hit(KEY_PAUSE_GAME))
     {
-        pause_menu_open(round_forfeit);
+        pause_menu_open(round_quit_to_main_menu);
         return;
     }
 
@@ -1447,8 +1483,7 @@ static inline enum GameState check_game_over_state(void)
 static inline void round_discarded_cards_loop(void)
 {
     // Discarded cards loop (mainly for shuffling)
-    if (hand_nb_held_cards() == 0 && get_hand_state() == HAND_SHUFFLING && s_discard_top >= -1 &&
-        g_game_vars.timer > FRAMES(10))
+    if (round_is_hand_shuffled_away())
     {
         // Bybass card shuffling if the game is over (be it win or lose)
         enum GameState game_over_state = check_game_over_state();
@@ -2514,6 +2549,14 @@ void round_on_update(void)
     // Card logic
 
     round_process_card_draw();
+
+    // WHY: checked before round_discarded_cards_loop(), which would start the end of the Round,
+    // and the rest of the update is skipped because it would draw the Round over the Main Menu
+    if (s_quitting_to_main_menu && round_is_hand_shuffled_away())
+    {
+        round_leave_to_main_menu();
+        return;
+    }
 
     round_discarded_cards_loop();
 

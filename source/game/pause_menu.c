@@ -37,7 +37,7 @@ enum PauseStage
 
 static const char* const PAUSE_OPTION_NAMES[PAUSE_OPTION_MAX] = {
     [PAUSE_OPTION_RESUME] = "Resume",
-    [PAUSE_OPTION_QUIT_RUN] = "Quit run"
+    [PAUSE_OPTION_QUIT_RUN] = "Main Menu"
 };
 
 static enum PauseStage s_stage = PAUSE_STAGE_CLOSED;

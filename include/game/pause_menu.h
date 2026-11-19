@@ -1,7 +1,7 @@
 /**
  * @file pause_menu.h
  *
- * @brief Pause overlay that freezes the game and offers to resume or quit the run.
+ * @brief Pause overlay that freezes the game and offers to resume or leave for the Main Menu.
  */
 #ifndef GAME_PAUSE_MENU_H
 #define GAME_PAUSE_MENU_H
@@ -9,7 +9,7 @@
 #include <stdbool.h>
 
 /**
- * @brief Callback run after the pause menu closed because "Quit run" was chosen.
+ * @brief Callback run after the pause menu closed because "Main Menu" was chosen.
  */
 typedef void (*PauseMenuQuitFunc)(void);
 
@@ -18,7 +18,7 @@ typedef void (*PauseMenuQuitFunc)(void);
  *
  * Does nothing if the menu is already open.
  *
- * @param on_quit_run called once the menu is closed if the player chose to quit the run
+ * @param on_quit_run called once the menu is closed if the player chose to leave the run
  */
 void pause_menu_open(PauseMenuQuitFunc on_quit_run);
 
