@@ -37,14 +37,17 @@ enum PauseStage
     PAUSE_STAGE_RESUMING
 };
 
-// Positions in pixels
-#define PAUSE_TITLE_Y   56
-#define PAUSE_OPTIONS_Y 80
+// Positions in pixels. The title and the options are centered vertically on the screen as a block.
+#define PAUSE_TITLE_Y   48
+#define PAUSE_OPTIONS_Y 72
 
+// WHY: text can only be placed every 8 pixels, the width of a character. A name with an odd
+// number of characters cannot be centered and ends up half a character to the left, so every
+// name here, like the title, has an even number of characters.
 static const char* const PAUSE_OPTION_NAMES[PAUSE_OPTION_MAX] = {
     [PAUSE_OPTION_RESUME] = "Resume",
-    [PAUSE_OPTION_RUN_INFO] = "Hands",
-    [PAUSE_OPTION_QUIT_RUN] = "Main Menu"
+    [PAUSE_OPTION_RUN_INFO] = "Run Info",
+    [PAUSE_OPTION_QUIT_RUN] = "Back to Menu"
 };
 
 static enum PauseStage s_stage = PAUSE_STAGE_CLOSED;

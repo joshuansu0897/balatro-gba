@@ -15,7 +15,7 @@
 typedef struct PauseMenuHost
 {
     /**
-     * @brief Called after the menu closed because "Main Menu" was chosen.
+     * @brief Called after the menu closed because "Back to Menu" was chosen.
      */
     void (*quit_to_main_menu)(void);
 
