@@ -109,6 +109,7 @@ typedef struct SaveGame
     s32 round;
     s32 deck;
     u32 nb_played_hands[HAND_TYPE_MAX];
+    u32 hand_levels[HAND_TYPE_MAX];
 
     u32 best_hand_score;
     u32 nb_skipped_rounds;

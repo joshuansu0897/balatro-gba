@@ -13,6 +13,7 @@
 #include "game/common_ui.h"
 #include "game_variables.h"
 #include "graphic_utils.h"
+#include "hand_levels.h"
 #include "mgba_logger.h"
 #include "soundbank.h"
 
@@ -179,6 +180,41 @@ ContainedHandTypes* get_contained_hands(void)
     return &s_hand.contained_hands;
 }
 
+// WHY: hand_levels.h cannot include hand.h, which needs GBA headers
+_Static_assert(NONE == HAND_LEVELS_NO_HAND, "hand_levels.h uses other hand types");
+_Static_assert(HAND_TYPE_MIN == HAND_LEVELS_LOWEST_HAND, "hand_levels.h uses other hand types");
+_Static_assert(STRAIGHT_FLUSH == HAND_LEVELS_STRAIGHT_FLUSH, "hand_levels.h uses other hand types");
+_Static_assert(ROYAL_FLUSH == HAND_LEVELS_ROYAL_FLUSH, "hand_levels.h uses other hand types");
+_Static_assert(FIVE_OF_A_KIND == HAND_LEVELS_FIRST_SECRET_HAND, "hand_levels.h uses other hand types");
+_Static_assert(HAND_TYPE_MAX == HAND_LEVELS_HIGHEST_HAND, "hand_levels.h uses other hand types");
+
+u32 hand_get_level(enum HandType hand_type)
+{
+    int level_owner = hand_levels_get_owner(hand_type);
+    if (level_owner == HAND_LEVELS_NO_HAND)
+        return 1;
+
+    // WHY: like nb_played_hands, hand_levels has no entry for NONE and starts at HIGH_CARD.
+    // It counts level ups, a hand that was never leveled up is level 1.
+    return g_game_vars.hand_levels[level_owner - 1] + 1;
+}
+
+void hand_level_up(enum HandType hand_type)
+{
+    int level_owner = hand_levels_get_owner(hand_type);
+    if (level_owner == HAND_LEVELS_NO_HAND)
+        return;
+
+    u32* nb_level_ups = &g_game_vars.hand_levels[level_owner - 1];
+    *nb_level_ups = hand_levels_add_level_up(*nb_level_ups);
+}
+
+HandBonus hand_get_level_up_bonus(enum HandType hand_type)
+{
+    // WHY: a value that is not a hand maps to NONE, which gains nothing
+    return HAND_LEVEL_BONUS[hand_levels_get_owner(hand_type)];
+}
+
 HandBonus get_hand_total_bonus(enum HandType hand_type)
 {
     HandBonus hand_bonus = {UNDEFINED, UNDEFINED};
@@ -195,11 +231,10 @@ HandBonus get_hand_total_bonus(enum HandType hand_type)
     }
 
     HandValues hand_base = HAND_BASE_VALUES[hand_type];
-    HandBonus level_bonus = HAND_LEVEL_BONUS[hand_type];
-    // WHY: like nb_played_hands, hand_levels has no entry for NONE and starts at HIGH_CARD
-    u32 hand_level = g_game_vars.hand_levels[hand_type - 1];
-    hand_bonus.chips = hand_base.chips + level_bonus.chips * hand_level;
-    hand_bonus.mult = hand_base.mult + level_bonus.mult * hand_level;
+    HandBonus level_bonus = hand_get_level_up_bonus(hand_type);
+    u32 nb_level_ups = hand_get_level(hand_type) - 1;
+    hand_bonus.chips = hand_base.chips + level_bonus.chips * nb_level_ups;
+    hand_bonus.mult = hand_base.mult + level_bonus.mult * nb_level_ups;
 
     return hand_bonus;
 }
@@ -228,8 +263,14 @@ void compute_hand_value_info(void)
 
     HandValues hand_values = HAND_BASE_VALUES[s_hand.hand_type];
 
-    g_game_vars.chips = hand_values.chips;
-    g_game_vars.mult = hand_values.mult;
+    // Add what the level of the hand gives
+    // WHY: NONE means no card is selected, it has no level
+    HandBonus hand_bonus = {hand_values.chips, hand_values.mult};
+    if (s_hand.hand_type != NONE)
+        hand_bonus = get_hand_total_bonus(s_hand.hand_type);
+
+    g_game_vars.chips = hand_bonus.chips;
+    g_game_vars.mult = hand_bonus.mult;
 
     // WHY: a hand the Boss Blind does not allow is played for nothing, the player has to see it
     // before playing

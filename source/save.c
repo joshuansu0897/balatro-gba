@@ -147,6 +147,7 @@ static const SaveGame SaveGame_default = {
     .round = 0,
     .deck = DECK_TYPE_RED,
     .nb_played_hands = {0},
+    .hand_levels = {0},
 
     .best_hand_score = 0,
     .nb_skipped_rounds = 0,
@@ -400,7 +401,10 @@ void save_game(enum GameState state)
     game.round = g_game_vars.round;
     game.deck = g_game_vars.deck;
     for (enum HandType hand_type = 0; hand_type < HAND_TYPE_MAX; hand_type++)
+    {
         game.nb_played_hands[hand_type] = g_game_vars.nb_played_hands[hand_type];
+        game.hand_levels[hand_type] = g_game_vars.hand_levels[hand_type];
+    }
 
     game.best_hand_score = g_game_vars.best_hand_score;
     game.nb_skipped_rounds = g_game_vars.nb_skipped_rounds;
@@ -504,7 +508,10 @@ void load_game(SaveGame* game_data)
     g_game_vars.ante = game_data->ante;
     g_game_vars.round = game_data->round;
     for (enum HandType hand_type = 0; hand_type < HAND_TYPE_MAX; hand_type++)
+    {
         g_game_vars.nb_played_hands[hand_type] = game_data->nb_played_hands[hand_type];
+        g_game_vars.hand_levels[hand_type] = game_data->hand_levels[hand_type];
+    }
 
     g_game_vars.best_hand_score = game_data->best_hand_score;
     g_game_vars.nb_skipped_rounds = game_data->nb_skipped_rounds;

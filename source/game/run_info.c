@@ -441,7 +441,7 @@ static inline void hand_levels_print_info(void)
             HAND_LEVELS_TEXT_POS.x,
             hand_info_y,
             TTE_DARK_GREEN_TAG,
-            g_game_vars.hand_levels[hand_type - 1] + 1,
+            hand_get_level(hand_type),
             TTE_WHITE_TAG,
             get_hand_type_name(hand_type),
             hand_bonus.chips,

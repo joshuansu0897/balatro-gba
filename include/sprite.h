@@ -46,6 +46,7 @@ enum SpriteType
     SKIP_TAG_SPRITE,
     JOKER_SPRITE,
     DECK_SPRITE,
+    PLANET_SPRITE,
     MAX_SPRITE_TYPE
 };
 

@@ -51,14 +51,17 @@ static const int s_sprite_counts[MAX_SPRITE_TYPE] = {
     [SKIP_TAG_SPRITE]    = MAX_SKIP_TAGS,
     [JOKER_SPRITE]       = MAX_ACTIVE_JOKERS,
     // One for the Run Setup screen, one for the in-game Deck pile
-    [DECK_SPRITE]        = 2
+    [DECK_SPRITE]        = 2,
+    // Planets only exist while they are for sale
+    [PLANET_SPRITE]      = MAX_SHOP_ITEMS
 };
 static const int s_sprite_sizes[MAX_SPRITE_TYPE] = {
     [CARD_SPRITE]        = CARD_SPRITE_TILES,
     [BLIND_TOKEN_SPRITE] = BLIND_SPRITE_TILES,
     [SKIP_TAG_SPRITE]    = SKIP_TAG_SPRITE_TILES,
     [JOKER_SPRITE]       = JOKER_SPRITE_TILES,
-    [DECK_SPRITE]        = CARD_SPRITE_TILES
+    [DECK_SPRITE]        = CARD_SPRITE_TILES,
+    [PLANET_SPRITE]      = JOKER_SPRITE_TILES
 };
 // clang-format on
 

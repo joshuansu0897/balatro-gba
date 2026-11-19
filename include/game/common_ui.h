@@ -20,7 +20,10 @@ enum SpritePaletteBanks
     NORMAL_BLIND_PB,
     BOSS_BLIND_PB,
     JOKER_BASE_PB,
-    JOKER_LAST_PB = 15,
+    JOKER_LAST_PB = 14,
+    // WHY: every Planet shares one palette, taken from the ones Jokers could use. There are
+    // still more left than Jokers on screen at once.
+    PLANET_PB,
     NUM_PALETTES
 };
 
