@@ -25,3 +25,4 @@ run_test sfx_pitch
 run_test boss_blind_effects
 run_test hand_levels
 run_test pack_rules
+run_test shop_rules

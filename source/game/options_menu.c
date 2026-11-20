@@ -2,11 +2,11 @@
 
 #include "audio_utils.h"
 #include "background_options_menu_gfx.h"
-#include "boss_blind_effects.h"
 #include "button.h"
 #include "card.h"
 #include "game.h"
 #include "game/common_ui.h"
+#include "game/options_rules.h"
 #include "game_variables.h"
 #include "graphic_utils.h"
 #include "save.h"
@@ -23,7 +23,6 @@ enum OptionButtonRows
 {
     GAME_SPEED_ROW_IDX,
     HIGH_CONTRAST_ROW_IDX,
-    BOSS_EFFECTS_ROW_IDX,
     MUSIC_VOLUME_ROW_IDX,
     SOUND_VOLUME_ROW_IDX,
     SAVE_BACK_ROW_IDX,
@@ -36,35 +35,12 @@ enum OptionSpeedButtons
     NB_GAME_SPEED_BUTTONS
 };
 
-// Palette indices for colors that change at runtime (i.e. button outlines) start at 16 and are
-// sorted by the position of the buttons in the menu from top to bottom, and from left to right.
-// Indices for static colors (i.e. background and main button colors) range from 0 to 15.
-// The indexing is determined by background_options_menu_gfx.png.
-#define MENU_BUTTON_MAIN_COLOR_PAL_IDX          1
-#define SAVE_BUTTON_MAIN_COLOR_PAL_IDX          3
-#define BACK_BUTTON_MAIN_COLOR_PAL_IDX          4
-#define SPEED_DOWN_BUTTON_OUTLINE_COLOR_PAL_IDX 16
-#define SPEED_BUTTON_OUTLINE_COLOR_PAL_IDX      17
-#define SPEED_UP_BUTTON_OUTLINE_COLOR_PAL_IDX   18
-#define CONTRAST_BUTTON_OUTLINE_COLOR_PAL_IDX   19
-#define READABLE_BUTTON_OUTLINE_COLOR_PAL_IDX   20
-#define MUSIC_BUTTON_OUTLINE_COLOR_PAL_IDX      21
-#define SOUND_BUTTON_OUTLINE_COLOR_PAL_IDX      22
-#define SAVE_BUTTON_OUTLINE_COLOR_PAL_IDX       23
-#define BACK_BUTTON_OUTLINE_COLOR_PAL_IDX       24
-// WHY: added after the other outlines were numbered, renumbering them would mean repainting
-// the whole background
-#define BOSS_BUTTON_OUTLINE_COLOR_PAL_IDX       25
-
 // Define selection grid for the menu buttons
 
 static void game_speed_down_on_pressed(void);
 static void game_speed_up_on_pressed(void);
 static void high_contrast_on_pressed(void);
 static void more_readable_on_pressed(void);
-static void boss_effects_on_pressed(void);
-static void save_on_pressed(void);
-static void back_on_pressed(void);
 static int options_menu_return_upper_rows_size(void);
 static int options_menu_return_card_sprites_row_size(void);
 static int options_menu_return_bottom_row_size(void);
@@ -112,13 +88,6 @@ static SelectionGridRow options_menu_selection_rows[] = {
         {.wrap = false}
     },
     {
-        BOSS_EFFECTS_ROW_IDX,
-        options_menu_return_upper_rows_size,
-        regular_button_row_on_selection_changed,
-        options_menu_row_on_key_transit,
-        {.wrap = false}
-    },
-    {
         MUSIC_VOLUME_ROW_IDX,
         options_menu_return_upper_rows_size,
         music_volume_row_on_selection_changed,
@@ -147,12 +116,11 @@ static Button options_menu_buttons[NB_OPTIONS_ROWS][2] = {
         {CONTRAST_BUTTON_OUTLINE_COLOR_PAL_IDX, MENU_BUTTON_MAIN_COLOR_PAL_IDX, high_contrast_on_pressed, NULL},
         {READABLE_BUTTON_OUTLINE_COLOR_PAL_IDX, MENU_BUTTON_MAIN_COLOR_PAL_IDX, more_readable_on_pressed, NULL}
     },
-    {{BOSS_BUTTON_OUTLINE_COLOR_PAL_IDX,     MENU_BUTTON_MAIN_COLOR_PAL_IDX, boss_effects_on_pressed,  NULL}},
     {{MUSIC_BUTTON_OUTLINE_COLOR_PAL_IDX,    MENU_BUTTON_MAIN_COLOR_PAL_IDX, NULL,                     NULL}},
     {{SOUND_BUTTON_OUTLINE_COLOR_PAL_IDX,    MENU_BUTTON_MAIN_COLOR_PAL_IDX, NULL,                     NULL}},
     {
-        {SAVE_BUTTON_OUTLINE_COLOR_PAL_IDX, SAVE_BUTTON_MAIN_COLOR_PAL_IDX, save_on_pressed, NULL},
-        {BACK_BUTTON_OUTLINE_COLOR_PAL_IDX, BACK_BUTTON_MAIN_COLOR_PAL_IDX, back_on_pressed, NULL},
+        {SAVE_BUTTON_OUTLINE_COLOR_PAL_IDX, SAVE_BUTTON_MAIN_COLOR_PAL_IDX, options_menu_save,   NULL},
+        {BACK_BUTTON_OUTLINE_COLOR_PAL_IDX, BACK_BUTTON_MAIN_COLOR_PAL_IDX, options_menu_cancel, NULL},
     }
 };
 
@@ -176,26 +144,22 @@ static SelectionGrid options_menu_selection_grid = {
 // Values in tiles
 static const Rect     OPTIONS_SPEED_DOWN_ACTIVE_BTN_SRC_RECT   = { 0, 20,  0, 21};
 static const Rect     OPTIONS_SPEED_DOWN_DISABLED_BTN_SRC_RECT = { 6, 22,  6, 23};
-static const BG_POINT OPTIONS_SPEED_DOWN_BTN_DEST_POS          = {11,  3};
+static const BG_POINT OPTIONS_SPEED_DOWN_BTN_DEST_POS          = {11,  4};
 static const Rect     OPTIONS_SPEED_UP_ACTIVE_BTN_SRC_RECT     = { 7, 20,  7, 21};
 static const Rect     OPTIONS_SPEED_UP_DISABLED_BTN_SRC_RECT   = { 7, 22,  7, 23};
-static const BG_POINT OPTIONS_SPEED_UP_BTN_DEST_POS            = {18,  3};
+static const BG_POINT OPTIONS_SPEED_UP_BTN_DEST_POS            = {18,  4};
 static const Rect     OPTIONS_SPEED_VALUES[GAME_SPEED_MAX]   = { { 3, 20,  4, 21},
                                                                  { 0, 22,  1, 23},
                                                                  { 2, 22,  3, 23},
                                                                  { 4, 22,  5, 23} };
-static const BG_POINT OPTIONS_SPEED_VALUE_DEST_POS             = {14,  3};
+static const BG_POINT OPTIONS_SPEED_VALUE_DEST_POS             = {14,  4};
 
 static const Rect     OPTIONS_CONTRAST_CHECK_NO_SRC_RECT       = { 0, 24,  1, 25};
 static const Rect     OPTIONS_CONTRAST_CHECK_YES_SRC_RECT      = { 2, 24,  3, 25};
-static const BG_POINT OPTIONS_CONTRAST_CHECK_DEST_POS          = {14,  7};
+static const BG_POINT OPTIONS_CONTRAST_CHECK_DEST_POS          = {14,  8};
 static const Rect     OPTIONS_READABLE_CHECK_NO_SRC_RECT       = { 4, 24,  5, 25};
 static const Rect     OPTIONS_READABLE_CHECK_YES_SRC_RECT      = { 6, 24,  7, 25};
-static const BG_POINT OPTIONS_READABLE_CHECK_DEST_POS          = {21,  7};
-
-static const Rect     OPTIONS_BOSS_CHECK_NO_SRC_RECT           = { 8, 24,  9, 25};
-static const Rect     OPTIONS_BOSS_CHECK_YES_SRC_RECT          = {10, 24, 11, 25};
-static const BG_POINT OPTIONS_BOSS_CHECK_DEST_POS              = {20, 10};
+static const BG_POINT OPTIONS_READABLE_CHECK_DEST_POS          = {21,  8};
 
 static const Rect     OPTIONS_MUSIC_SLIDER_FULL_SRC            = { 9, 20,  9, 20};
 static const Rect     OPTIONS_MUSIC_SLIDER_MID_SRC             = {10, 20, 10, 20};
@@ -213,8 +177,9 @@ static const u8       OPTIONS_SOUND_SLIDER_SEGMENT_LENGTH      = (OPTIONS_SOUND_
                                                                     / VOLUME_OPTION_MAX;
 
 // Values in pixels
-static const BG_POINT OPTIONS_GAME_SPEED_TEXT_POS        = { 82,  16};
-static const BG_POINT OPTIONS_CARD_SPRITES_TEXT_POS      = { 72,  48};
+static const BG_POINT OPTIONS_PAGE_NAMES_TEXT_POS        = { 48,   8};
+static const BG_POINT OPTIONS_GAME_SPEED_TEXT_POS        = { 82,  24};
+static const BG_POINT OPTIONS_CARD_SPRITES_TEXT_POS      = { 72,  56};
 static const BG_POINT OPTIONS_MUSIC_VOLUME_TEXT_POS      = { 40, 104};
 static const BG_POINT OPTIONS_MUSIC_VALUE_TEXT_POS       = {176, 104};
 static const BG_POINT OPTIONS_SOUND_VOLUME_TEXT_POS      = { 40, 120};
@@ -225,6 +190,9 @@ static const BG_POINT OPTIONS_BACK_SAVE_TEXT_POS         = { 64, 136};
 #define GAME_SPEED_ARROW_HIGHLIGHT_DURATION 10
 enum OptionSpeedButtons game_speed_arrow_highlight_button = GAME_SPEED_UP_BTN_IDX;
 static s32 game_speed_arrow_highlight_start = UNDEFINED;
+
+// The menu has two pages, Display and Rules. L and R go from one to the other.
+static bool s_is_rules_page = false;
 
 static void disable_all_game_speed_outlines_except_self(enum OptionSpeedButtons highlighted_btn)
 {
@@ -295,13 +263,6 @@ static void update_more_readable_button_graphics(void)
     Rect readable_btn_tiles = (get_cards_more_readable()) ? OPTIONS_READABLE_CHECK_YES_SRC_RECT
                                                           : OPTIONS_READABLE_CHECK_NO_SRC_RECT;
     main_bg_se_copy_rect(readable_btn_tiles, OPTIONS_READABLE_CHECK_DEST_POS);
-}
-
-static void update_boss_effects_button_graphics(void)
-{
-    Rect boss_btn_tiles = (boss_blind_is_enabled()) ? OPTIONS_BOSS_CHECK_YES_SRC_RECT
-                                                    : OPTIONS_BOSS_CHECK_NO_SRC_RECT;
-    main_bg_se_copy_rect(boss_btn_tiles, OPTIONS_BOSS_CHECK_DEST_POS);
 }
 
 static void update_volume_slider_graphics(enum OptionButtonRows sel_row)
@@ -422,25 +383,80 @@ void options_menu_change_background(void)
     );
 }
 
-void options_menu_on_init(void)
+/**
+ * @brief Print the names of the two pages, the one shown stands out.
+ */
+static void options_menu_print_page_names(void)
 {
-    change_background(BG_OPTIONS_MENU, false);
+    u8 display_color = s_is_rules_page ? TTE_WHITE_PB : TTE_YELLOW_PB;
+    u8 rules_color = s_is_rules_page ? TTE_YELLOW_PB : TTE_WHITE_PB;
 
+    tte_printf(
+        "#{P:%d,%d; cx:0x%X000}L #{cx:0x%X000}Display  #{cx:0x%X000}Rules#{cx:0x%X000} R",
+        OPTIONS_PAGE_NAMES_TEXT_POS.x,
+        OPTIONS_PAGE_NAMES_TEXT_POS.y,
+        TTE_WHITE_PB,
+        display_color,
+        rules_color,
+        TTE_WHITE_PB
+    );
+}
+
+/**
+ * @brief Draw the state of the Display page over its background, cursor on the first row.
+ */
+static void options_menu_show_display_page(void)
+{
     // Select game speed button by default
     options_menu_selection_grid.selection = OPTIONS_MENU_INIT_SEL;
     disable_all_outlines_except_self(OPTIONS_MENU_INIT_SEL);
 
-    // Do an update on the first frame
     update_game_speed_button_graphics();
     update_high_contrast_button_graphics();
     update_more_readable_button_graphics();
-    update_boss_effects_button_graphics();
     update_volume_slider_graphics(MUSIC_VOLUME_ROW_IDX);
     update_volume_slider_graphics(SOUND_VOLUME_ROW_IDX);
+    options_menu_print_page_names();
+}
+
+static void options_menu_switch_page(void)
+{
+    s_is_rules_page = !s_is_rules_page;
+    play_sfx(SFX_BUTTON, MM_BASE_PITCH_RATE, BUTTON_SFX_VOLUME);
+
+    if (s_is_rules_page)
+    {
+        options_rules_show();
+        options_menu_print_page_names();
+        return;
+    }
+
+    // WHY: the Rules page drew over the Display page, which is loaded again
+    options_menu_change_background();
+    options_menu_show_display_page();
+}
+
+void options_menu_on_init(void)
+{
+    s_is_rules_page = false;
+    change_background(BG_OPTIONS_MENU, false);
+    options_menu_show_display_page();
 }
 
 void options_menu_on_update(void)
 {
+    if (key_hit(KEY_TAB_LEFT) || key_hit(KEY_TAB_RIGHT))
+    {
+        options_menu_switch_page();
+        return;
+    }
+
+    if (s_is_rules_page)
+    {
+        options_rules_update();
+        return;
+    }
+
     selection_grid_process_input(&options_menu_selection_grid);
 
     // game speed arrows small animation: they stay highlighted for a few frames
@@ -494,28 +510,13 @@ static void more_readable_on_pressed(void)
     update_more_readable_button_graphics();
 }
 
-/**
- * @brief Handles input for the Boss Blind effects toggle button and nothing more.
- */
-static void boss_effects_on_pressed(void)
-{
-    boss_blind_set_enabled(!boss_blind_is_enabled());
-    update_boss_effects_button_graphics();
-}
-
-/**
- * @brief Handles input for the Save button.
- */
-static void save_on_pressed(void)
+void options_menu_save(void)
 {
     save_options();
     game_change_state(GAME_STATE_MAIN_MENU);
 }
 
-/**
- * @brief Handles input for the Back button.
- */
-static void back_on_pressed(void)
+void options_menu_cancel(void)
 {
     load_options();
     game_change_state(GAME_STATE_MAIN_MENU);
