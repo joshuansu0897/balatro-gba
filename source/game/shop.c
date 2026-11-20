@@ -21,6 +21,7 @@
 #include "mgba_logger.h"
 #include "random.h"
 #include "save.h"
+#include "shop_rules.h"
 #include "skip_tag.h"
 #include "soundbank.h"
 #include "state_machine.h"
@@ -312,6 +313,10 @@ static void shop_redeem_skip_tags(void)
  */
 static Item* shop_create_top_row_item(void)
 {
+    // WHY: with Planet cards switched off on the Rules page, only Jokers are for sale
+    if (!shop_rules_is_on(SHOP_RULE_PLANET_CARDS))
+        return item_roll_new(ITEM_TYPE_JOKER, RNG_SEQ_SHOP_ITEMS);
+
     bool is_planet = (rng_get_u32(RNG_SEQ_SHOP_ITEMS) % SHOP_PLANET_ODDS == 0);
     enum ItemType rolled_type = is_planet ? ITEM_TYPE_PLANET : ITEM_TYPE_JOKER;
     enum ItemType other_type = is_planet ? ITEM_TYPE_JOKER : ITEM_TYPE_PLANET;

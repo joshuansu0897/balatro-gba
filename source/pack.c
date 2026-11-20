@@ -13,6 +13,7 @@
 #include "pack_rules.h"
 #include "planet.h"
 #include "random.h"
+#include "shop_rules.h"
 #include "sprite.h"
 #include "util.h"
 
@@ -190,6 +191,9 @@ int pack_object_roll_content(const Item* pack_object, List* choices)
 
 Item* joker_pack_object_roll_new(enum RngSequence key)
 {
+    if (!shop_rules_is_on(SHOP_RULE_JOKER_PACK))
+        return NULL;
+
     // WHY: with a Joker Pack in every Shop, Jokers were too cheap. It is a rare find instead.
     if (!pack_rules_is_joker_pack_for_sale(rng_get_u32(key)))
         return NULL;
@@ -199,6 +203,9 @@ Item* joker_pack_object_roll_new(enum RngSequence key)
 
 Item* planet_pack_object_roll_new(enum RngSequence key)
 {
+    if (!shop_rules_is_on(SHOP_RULE_PLANET_PACK))
+        return NULL;
+
     return pack_object_new(ITEM_TYPE_PLANET_PACK);
 }
 

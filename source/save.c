@@ -13,6 +13,7 @@
 #include "item.h"
 #include "joker.h"
 #include "list.h"
+#include "shop_rules.h"
 #include "util.h"
 #include "version.h"
 
@@ -106,8 +107,13 @@ typedef struct SaveOptions
     // WHY: takes one byte of the former padding so the section keeps its size. Saves made before
     // it existed hold UNDEFINED there, which is read as off.
     u8 boss_effects;
-    s8 padding[10];
+    // WHY: like boss_effects, these take bytes of the former padding. Saves made before
+    // they existed hold UNDEFINED there, which is read as on, see shop_rules.h.
+    u8 shop_rules[SHOP_RULE_MAX];
+    s8 padding[10 - SHOP_RULE_MAX];
 } SaveOptions;
+
+_Static_assert(SHOP_RULE_MAX == 3, "The default options list another number of Shop rules");
 
 /**
  * @brief Default value for the SaveOptions struct, with tags already set.
@@ -121,8 +127,8 @@ static const SaveOptions SaveOptions_default = {
     .music_volume = VOLUME_OPTION_MAX,
     .sound_volume = VOLUME_OPTION_MAX,
     .boss_effects = BOSS_EFFECTS_SAVED_OFF,
+    .shop_rules = {SHOP_RULE_SAVED_ON, SHOP_RULE_SAVED_ON, SHOP_RULE_SAVED_ON},
     .padding = {
-        UNDEFINED, UNDEFINED, UNDEFINED,
         UNDEFINED, UNDEFINED, UNDEFINED,
         UNDEFINED, UNDEFINED, UNDEFINED,
         UNDEFINED
@@ -304,6 +310,8 @@ void save_options(void)
     options.music_volume = g_game_vars.music_volume;
     options.sound_volume = g_game_vars.sound_volume;
     options.boss_effects = boss_blind_is_enabled() ? BOSS_EFFECTS_SAVED_ON : BOSS_EFFECTS_SAVED_OFF;
+    for (int rule = 0; rule < SHOP_RULE_MAX; rule++)
+        options.shop_rules[rule] = shop_rules_get_saved(rule);
 
     write_sram(OPTIONS_ADDRESS, (const u8*)&options, sizeof(options));
     set_save_header(SAVE_SECTION_FLAG_OPTIONS);
@@ -327,6 +335,8 @@ void load_options(void)
     set_cards_high_contrast(options.cards_high_contrast);
     set_cards_more_readable(options.cards_more_readable);
     boss_blind_set_enabled(options.boss_effects == BOSS_EFFECTS_SAVED_ON);
+    for (int rule = 0; rule < SHOP_RULE_MAX; rule++)
+        shop_rules_set_saved(rule, options.shop_rules[rule]);
 }
 
 void save_run_history(const RunHistory* history)
